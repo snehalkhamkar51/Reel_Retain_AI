@@ -46,6 +46,28 @@ def test_health_and_model_info_report_missing_models(app):
     assert info.status_code == 200
     assert info.json["model"]["available"] is False
     assert "synthetic" in info.json["model"]["disclaimer"].lower()
+    assert info.json["upload"]["max_bytes"] == 1024
+    assert ".mp4" in info.json["upload"]["extensions"]
+
+
+def test_homepage_and_frontend_assets_are_served_by_flask(app):
+    client = app.test_client()
+
+    homepage = client.get("/")
+    stylesheet = client.get("/static/css/app.css")
+    application = client.get("/static/js/app.js")
+    api_module = client.get("/static/js/api.js")
+
+    assert homepage.status_code == 200
+    assert b"Know your reel" in homepage.data
+    assert b"synthetic" in homepage.data.lower()
+    assert b'type="module"' in homepage.data
+    assert stylesheet.status_code == 200
+    assert b"#080b12" in stylesheet.data
+    assert application.status_code == 200
+    assert "javascript" in application.mimetype
+    assert b"analyzeVideo" in application.data
+    assert api_module.status_code == 200
 
 
 def test_analyze_rejects_missing_and_unsupported_uploads(app):

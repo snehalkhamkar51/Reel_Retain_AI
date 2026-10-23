@@ -1,8 +1,9 @@
 import logging
+import mimetypes
 import uuid
 from pathlib import Path
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
@@ -14,9 +15,11 @@ from reelretain.features import (
 )
 from reelretain.predict import DISCLAIMER, ModelUnavailableError, Predictor
 
+mimetypes.add_type("text/javascript", ".js", strict=True)
+
 
 def create_app(config_overrides: dict | None = None) -> Flask:
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder="static", template_folder="templates")
     app.config.update(get_config())
     if config_overrides:
         app.config.update(config_overrides)
@@ -42,6 +45,10 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def assign_request_id():
         request.request_id = uuid.uuid4().hex
 
+    @app.get("/")
+    def home():
+        return render_template("index.html")
+
     @app.get("/api/health")
     def health():
         predictor = app.extensions["predictor"]
@@ -56,7 +63,15 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     @app.get("/api/model-info")
     def model_info():
         predictor = app.extensions["predictor"]
-        return jsonify({"ok": True, "model": predictor.info(), "request_id": request.request_id})
+        return jsonify({
+            "ok": True,
+            "model": predictor.info(),
+            "upload": {
+                "max_bytes": app.config["MAX_CONTENT_LENGTH"],
+                "extensions": sorted(SUPPORTED_EXTENSIONS),
+            },
+            "request_id": request.request_id,
+        })
 
     @app.post("/api/analyze")
     def analyze():

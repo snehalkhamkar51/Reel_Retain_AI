@@ -48,7 +48,7 @@ Each target's report lists validation MAE/RMSE/R² for all candidate models and 
 python run.py
 ```
 
-The server listens on `http://127.0.0.1:5000` by default. Environment configuration (all optional; copy `.env.example` to `.env` to load local settings):
+The landing page, video analyzer, results dashboard, static assets, and JSON API are served by Flask at `http://127.0.0.1:5000` by default. No second frontend process, package manager, paid API, or CORS configuration is required. Environment configuration (all optional; copy `.env.example` to `.env` to load local settings):
 
 | Variable | Default | Purpose |
 |---|---:|---|
@@ -98,13 +98,15 @@ Unavailable audio values are represented as missing, surfaced in warnings, and m
 
 Video frames are resized to 64×64 grayscale and sampled at approximately one frame per second. A sampled normalized mean absolute grayscale difference of at least `0.30` counts as a scene-change candidate; motion intensity is the mean of those normalized differences. FFmpeg converts audio to mono 16 kHz float samples; energy is RMS, and silence duration is the total duration of 20 ms windows below `0.01` RMS (−40 dBFS). Audio and video decoding have configurable timeouts.
 
+The UI's review prompts are simple heuristics, not model conclusions: a measured silence duration at or above 20% of the video suggests reviewing those spans; fewer than two or more than twenty detected scene changes per minute suggests checking pacing; and zero supplied caption words suggests adding the caption for counts. These thresholds do not prove why a viewer might leave.
+
 ## Tests
 
 ```powershell
 python -m pytest
 ```
 
-Tests use small in-memory fixtures and generated media where supported; they do not call external services or create replacement training data.
+Tests use small in-memory fixtures and generated media where supported; they do not call external services or create replacement training data. The Flask test client also checks that the landing page and frontend assets are served. The browser interface requires no frontend install step.
 
 ## Troubleshooting and known limitations
 
