@@ -21,9 +21,9 @@ TARGET_LABELS = {
 }
 
 DISCLAIMER = (
-    "ReelRetain AI currently uses models trained on synthetic data. Its retention estimates have not "
-    "been validated against real audience analytics and may differ from actual results. Use them as "
-    "experimental guidance, not as guaranteed outcomes."
+    "Experimental retention estimates: this model was trained on synthetic data and has not been "
+    "validated against real audience-retention analytics. Predictions are not actual platform "
+    "analytics or guarantees."
 )
 
 

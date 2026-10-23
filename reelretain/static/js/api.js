@@ -8,15 +8,17 @@ export async function loadModelInfo() {
   return body;
 }
 
-export function analyzeVideo(file, caption, topic, onProgress) {
+export function analyzeVideo(file, caption, topic, geminiConsent, referenceUrls, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     const form = new FormData();
     form.append("video", file, file.name);
     form.append("caption", caption);
     form.append("topic", topic);
+    form.append("gemini_consent", String(geminiConsent));
+    form.append("reference_urls", referenceUrls);
     request.open("POST", "/api/analyze");
-    request.timeout = 180000;
+    request.timeout = 600000;
     request.setRequestHeader("Accept", "application/json");
     request.upload.addEventListener("progress", (event) => {
       if (event.lengthComputable) {

@@ -22,6 +22,9 @@ const elements = {
   remove: document.querySelector("#remove-video"),
   caption: document.querySelector("#caption"),
   topic: document.querySelector("#topic"),
+  geminiConsent: document.querySelector("#gemini-consent"),
+  geminiAvailability: document.querySelector("#gemini-availability"),
+  referenceUrls: document.querySelector("#reference-urls"),
   captionCount: document.querySelector("#caption-count"),
   limit: document.querySelector("#upload-limit"),
   formatChips: document.querySelector("#format-chips"),
@@ -37,6 +40,20 @@ const elements = {
   disclaimer: document.querySelector("#result-disclaimer"),
   recommendationContext: document.querySelector("#recommendation-context"),
   recommendations: document.querySelector("#recommendation-list"),
+  contentAnalysisState: document.querySelector("#content-analysis-state"),
+  contentAnalysisDetails: document.querySelector("#content-analysis-details"),
+  analysisTopic: document.querySelector("#analysis-topic"),
+  analysisDescription: document.querySelector("#analysis-description"),
+  analysisFields: document.querySelector("#analysis-fields"),
+  improvementPlan: document.querySelector("#improvement-plan"),
+  geminiHooks: document.querySelector("#gemini-hooks"),
+  geminiCaptions: document.querySelector("#gemini-captions"),
+  analysisMoments: document.querySelector("#analysis-moments"),
+  analysisOverlaysStoryboard: document.querySelector("#analysis-overlays-storyboard"),
+  analysisUncertainties: document.querySelector("#analysis-uncertainties"),
+  audienceState: document.querySelector("#audience-state"),
+  audienceList: document.querySelector("#audience-list"),
+  referenceList: document.querySelector("#reference-list"),
   metrics: document.querySelector("#metrics-grid"),
   chart: document.querySelector("#metric-chart"),
   legend: document.querySelector("#chart-legend"),
@@ -87,6 +104,8 @@ elements.caption.addEventListener("input", () => {
   elements.captionCount.textContent = `${elements.caption.value.length} / 2200`;
 });
 elements.recommendations.addEventListener("click", copyRecommendation);
+elements.geminiHooks.addEventListener("click", copyRecommendation);
+elements.geminiCaptions.addEventListener("click", copyRecommendation);
 elements.submit.addEventListener("click", submitAnalysis);
 elements.analyzeAnother.addEventListener("click", resetForAnother);
 elements.download.addEventListener("click", downloadReport);
@@ -124,6 +143,11 @@ async function loadPageInfo() {
   try {
     latestModelInfo = await loadModelInfo();
     const upload = latestModelInfo.upload || {};
+    const contentAnalysis = latestModelInfo.content_analysis || {};
+    elements.geminiConsent.disabled = !contentAnalysis.available;
+    elements.geminiAvailability.textContent = contentAnalysis.available
+      ? `Optional Gemini analysis is ready (${contentAnalysis.model}); your video is sent to Google only when you check the consent box.`
+      : "Gemini analysis is unavailable until the app owner configures a Google Gemini API key.";
     if (Number.isFinite(upload.max_bytes) && upload.max_bytes > 0) {
       maxUploadBytes = upload.max_bytes;
       elements.limit.textContent = `Up to ${formatBytes(maxUploadBytes)} · temporary local processing`;
@@ -223,7 +247,14 @@ async function submitAnalysis() {
   elements.results.classList.add("hidden");
   showProgress("Uploading video", "Sending the selected video to the local analysis service…", 0, false);
   try {
-    const response = await analyzeVideo(selectedFile, elements.caption.value, elements.topic.value, updateProgress);
+    const response = await analyzeVideo(
+      selectedFile,
+      elements.caption.value,
+      elements.topic.value,
+      elements.geminiConsent.checked,
+      elements.referenceUrls.value,
+      updateProgress,
+    );
     validateResponse(response);
     latestAnalysis = response;
     elements.progress.classList.add("hidden");
@@ -244,7 +275,14 @@ function updateProgress(progress) {
     showProgress("Uploading video", "Sending the selected video to the local analysis service…", progress.percent, false);
     return;
   }
-  showProgress("Analyzing your video", "Extracting features, estimates, and edit suggestions…", null, true);
+  showProgress(
+    "Analyzing your video",
+    elements.geminiConsent.checked
+      ? "Extracting measurements and requesting consented Gemini content analysis…"
+      : "Extracting measurements and preparing local estimates and suggestions…",
+    null,
+    true,
+  );
 }
 
 function showProgress(title, message, percent, indeterminate) {
@@ -267,6 +305,8 @@ function setBusy(busy) {
   elements.input.disabled = busy;
   elements.caption.disabled = busy;
   elements.topic.disabled = busy;
+  elements.geminiConsent.disabled = busy || !latestModelInfo?.content_analysis?.available;
+  elements.referenceUrls.disabled = busy;
   elements.submit.querySelector(".button-label").textContent = busy ? "Analyzing…" : "Analyze my video";
 }
 
@@ -297,8 +337,11 @@ function renderResult(response, fileName) {
   elements.resultFile.textContent = fileName;
   elements.requestId.textContent = response.request_id || "unavailable";
   elements.disclaimer.querySelector("p").textContent = response.disclaimer
-    || "ReelRetain AI currently uses models trained on synthetic data. Its retention estimates have not been validated against real audience analytics and may differ from actual results. Use them as experimental guidance, not as guaranteed outcomes.";
+    || "Experimental retention estimates: this model was trained on synthetic data and has not been validated against real audience-retention analytics. Predictions are not actual platform analytics or guarantees.";
   renderRecommendations(response.recommendations);
+  renderContentAnalysis(response.content_analysis);
+  renderAudienceHypotheses(response.audience_hypotheses || []);
+  renderReferences(response.references || []);
   renderMetrics(elements.metrics, response.estimates);
   const duration = Number(response.features.video_duration_sec);
   renderMetricChart(elements.chart, elements.legend, response.estimates, Number.isFinite(duration) ? duration : 0);
@@ -375,12 +418,180 @@ function renderRecommendations(recommendations) {
       copy.type = "button";
       copy.className = "button button-secondary copy-recommendation";
       copy.dataset.copyText = recommendation.copy_text;
-      copy.textContent = recommendation.category === "Opening hook" ? "Copy hook" : "Copy caption";
-      copy.setAttribute("aria-label", `Copy ${recommendation.category === "Opening hook" ? "opening hook" : "suggested caption"}`);
+      copy.dataset.copyLabel = recommendation.category === "Opening hook" ? "hook" : "caption";
+      copy.textContent = `Copy ${copy.dataset.copyLabel}`;
+      copy.setAttribute("aria-label", `Copy ${copy.dataset.copyLabel}`);
       card.append(copy);
     }
     return card;
   }));
+}
+
+function renderContentAnalysis(contentAnalysis = {}) {
+  const status = contentAnalysis.status || "not_requested";
+  const messages = {
+    not_requested: "Optional Gemini analysis was not requested. Your local measurements, model estimates, and feature-based recommendations are still available.",
+    unavailable: "Gemini is not configured. Configure the API key to enable optional video understanding.",
+    error: contentAnalysis.message || "Gemini could not analyze this video. Local results remain available.",
+  };
+  const analysis = contentAnalysis.analysis;
+  if (status !== "complete" || !analysis) {
+    elements.contentAnalysisState.textContent = messages[status] || messages.error;
+    elements.contentAnalysisDetails.classList.add("hidden");
+    return;
+  }
+  elements.contentAnalysisState.textContent = `AI-generated content analysis · ${contentAnalysis.model || "configured Gemini model"}. Verify observations and timestamps against your video.`;
+  elements.contentAnalysisDetails.classList.remove("hidden");
+  elements.analysisTopic.textContent = analysis.main_topic_and_niche;
+  elements.analysisDescription.textContent = analysis.description;
+  elements.analysisFields.replaceChildren(
+    labeledDetail("Opening hook", `${analysis.opening_hook} ${analysis.hook_clarity}`),
+    labeledDetail("Main message", analysis.main_message),
+    labeledDetail("Structure", analysis.content_structure),
+    labeledDetail("Visual presentation", analysis.visual_presentation),
+    labeledDetail("Audio observations", analysis.audio_observations || "Unavailable or not sufficiently clear."),
+    labeledDetail("Ending and payoff", analysis.ending_and_payoff),
+  );
+  elements.improvementPlan.replaceChildren(...analysis.editing_changes.map((edit) => {
+    const card = document.createElement("article");
+    card.className = "recommendation-card";
+    card.append(
+      detailHeading(edit.what_to_change, edit.priority),
+      labeledDetail("Where", displayTimestamp(edit.timestamp_seconds)),
+      labeledDetail("Change", `${edit.operation}: ${edit.example}`),
+      labeledDetail("Why it may help", edit.viewer_rationale),
+      labeledDetail("Evidence", "Gemini content analysis; confirm against the video."),
+    );
+    return card;
+  }));
+  elements.geminiHooks.replaceChildren(...analysis.alternative_hooks.map((hook) => copyExample(hook, "Copy hook")));
+  elements.geminiCaptions.replaceChildren(...analysis.caption_alternatives.map((item) => {
+    const card = document.createElement("article");
+    card.className = "hook-card";
+    card.append(
+      labeledDetail("Caption", item.caption),
+      labeledDetail("CTA", item.cta),
+      copyButton(`${item.caption} ${item.cta}`, "Copy caption"),
+    );
+    return card;
+  }));
+  elements.analysisMoments.replaceChildren(
+    labeledDetail("Useful moments · Gemini observations", analysis.useful_moments.length
+      ? analysis.useful_moments.map((moment) => `${displayTimestamp(moment.timestamp_seconds)} — ${moment.observation} Suggested: ${moment.suggested_action}`).join("\n")
+      : "No specific moments were identified."),
+  );
+  elements.analysisOverlaysStoryboard.replaceChildren(
+    labeledDetail("Suggested on-screen text", analysis.on_screen_text.join("\n") || "No overlay text suggested."),
+    labeledDetail("Subtitle recommendations", analysis.subtitle_recommendations.join("\n") || "No subtitle suggestions were returned."),
+    labeledDetail("Mini storyboard", analysis.storyboard.join("\n") || "No storyboard supplied."),
+  );
+  elements.analysisUncertainties.replaceChildren(
+    labeledDetail("Uncertainties", analysis.uncertainties.join("\n") || "No additional uncertainties reported."),
+    labeledDetail("Not reliably determined", analysis.unavailable_observations.join("\n") || "None reported."),
+  );
+}
+
+function renderAudienceHypotheses(hypotheses) {
+  elements.audienceList.replaceChildren();
+  if (!Array.isArray(hypotheses) || hypotheses.length === 0) {
+    elements.audienceState.textContent = "No audience hypotheses are available. Opt in to Gemini content analysis to request topic-based hypotheses; viewer demographics are never inferred from the video alone.";
+    return;
+  }
+  elements.audienceState.textContent = "Potential audience hypotheses only—not measured viewers, age analytics, or demographic predictions.";
+  elements.audienceList.replaceChildren(...hypotheses.map((hypothesis) => {
+    const card = document.createElement("article");
+    card.className = "audience-card";
+    card.append(
+      detailHeading(hypothesis.age_band || "Age not specified"),
+      labeledDetail("Why it may be relevant", hypothesis.relevance),
+      labeledDetail("Need or interest", hypothesis.need_or_interest),
+      labeledDetail("Accessible presentation", hypothesis.accessible_presentation),
+      labeledDetail("Reasoning", hypothesis.reasoning),
+      labeledDetail("Evidence", "Gemini content analysis · hypothesis only"),
+    );
+    return card;
+  }));
+}
+
+function renderReferences(references) {
+  elements.referenceList.replaceChildren();
+  if (!Array.isArray(references) || references.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "reference-empty";
+    empty.textContent = "No reference URLs supplied. This app does not search or scrape video platforms; no example metrics are available.";
+    elements.referenceList.append(empty);
+    return;
+  }
+  elements.referenceList.replaceChildren(...references.map((reference) => {
+    const card = document.createElement("article");
+    card.className = "reference-card";
+    const title = document.createElement("b");
+    title.textContent = `${reference.platform} · User-provided URL`;
+    const link = document.createElement("a");
+    link.href = reference.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = reference.url;
+    const notice = document.createElement("p");
+    notice.textContent = reference.notice;
+    const metrics = document.createElement("p");
+    metrics.textContent = "Public engagement metrics and publication details: not retrieved.";
+    card.append(title, link, notice, metrics);
+    return card;
+  }));
+}
+
+function labeledDetail(label, text) {
+  const item = document.createElement("p");
+  item.className = "analysis-detail";
+  const heading = document.createElement("b");
+  heading.textContent = `${label}: `;
+  item.append(heading, document.createTextNode(String(text || "Unavailable.")));
+  return item;
+}
+
+function detailHeading(text, priority) {
+  const header = document.createElement("div");
+  header.className = "recommendation-card-head";
+  const title = document.createElement("h4");
+  title.textContent = text;
+  header.append(title);
+  if (priority) {
+    const badge = document.createElement("span");
+    badge.className = `recommendation-priority ${priority.toLowerCase()}`;
+    badge.textContent = `${priority} priority`;
+    header.append(badge);
+  }
+  return header;
+}
+
+function copyExample(text, label) {
+  const card = document.createElement("article");
+  card.className = "hook-card";
+  const example = document.createElement("p");
+  example.className = "recommendation-example";
+  example.textContent = text;
+  card.append(example, copyButton(text, label));
+  return card;
+}
+
+function copyButton(text, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button button-secondary copy-recommendation";
+  button.dataset.copyText = text;
+  button.dataset.copyLabel = label.replace(/^Copy\s+/i, "").toLowerCase();
+  button.textContent = label;
+  return button;
+}
+
+function displayTimestamp(seconds) {
+  if (seconds === null || seconds === undefined || seconds === ""
+      || !Number.isFinite(Number(seconds)) || Number(seconds) < 0) {
+    return "No verified timestamp available";
+  }
+  const whole = Math.floor(Number(seconds));
+  return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")} (Gemini suggested; verify)`;
 }
 
 async function copyRecommendation(event) {
@@ -388,11 +599,10 @@ async function copyRecommendation(event) {
   if (!button) return;
   try {
     await navigator.clipboard.writeText(button.dataset.copyText);
-    const originalText = button.textContent;
     button.textContent = "Copied";
-    showToast("Copied to clipboard.");
+    showToast(`Copied ${button.dataset.copyLabel || "text"} to clipboard.`);
     window.setTimeout(() => {
-      if (button.isConnected) button.textContent = originalText;
+      if (button.isConnected) button.textContent = `Copy ${button.dataset.copyLabel || "text"}`;
     }, 1600);
   } catch {
     showToast("Clipboard access is unavailable. Select the example text and copy it manually.");
@@ -420,6 +630,8 @@ function resetForAnother() {
   elements.caption.value = "";
   elements.captionCount.textContent = "0 / 2200";
   elements.topic.value = "";
+  elements.geminiConsent.checked = false;
+  elements.referenceUrls.value = "";
   document.querySelector("#analyze").scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth" });
   elements.input.click();
 }

@@ -13,8 +13,14 @@ from reelretain.features import (
     SUPPORTED_EXTENSIONS,
     extract_video_features,
 )
+from reelretain.gemini_analysis import (
+    DEFAULT_GEMINI_MODEL,
+    GeminiAnalysisError,
+    GeminiVideoAnalyzer,
+)
 from reelretain.predict import DISCLAIMER, ModelUnavailableError, Predictor
 from reelretain.recommendations import fallback_recommendations, generate_recommendations
+from reelretain.references import InvalidReferenceError, parse_user_references
 
 mimetypes.add_type("text/javascript", ".js", strict=True)
 
@@ -25,7 +31,16 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     if config_overrides:
         app.config.update(config_overrides)
     app.config["MAX_CONTENT_LENGTH"] = int(app.config["MAX_CONTENT_LENGTH"])
+    app.config["GEMINI_MODEL"] = str(
+        app.config.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+    ).strip()
     app.extensions["predictor"] = Predictor(app.config["ARTIFACT_DIR"])
+    app.extensions["gemini_analyzer"] = GeminiVideoAnalyzer(
+        app.config["GEMINI_API_KEY"],
+        app.config["GEMINI_MODEL"],
+        int(app.config["GEMINI_TIMEOUT_SECONDS"]),
+        int(app.config["GEMINI_POLL_INTERVAL_SECONDS"]),
+    )
 
     def error_response(status: int, code: str, message: str, request_id: str):
         return jsonify({
@@ -57,6 +72,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             "ok": True,
             "status": "healthy",
             "model_status": "ready" if predictor.available else "unavailable",
+            "gemini_available": app.extensions["gemini_analyzer"].available,
             "disclaimer": DISCLAIMER,
             "request_id": request.request_id,
         })
@@ -70,6 +86,17 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             "upload": {
                 "max_bytes": app.config["MAX_CONTENT_LENGTH"],
                 "extensions": sorted(SUPPORTED_EXTENSIONS),
+            },
+            "content_analysis": {
+                "provider": "Google Gemini",
+                "available": app.extensions["gemini_analyzer"].available,
+                "model": app.config["GEMINI_MODEL"] or DEFAULT_GEMINI_MODEL,
+                "requires_explicit_consent": True,
+            },
+            "reference_retrieval": {
+                "mode": "user-provided URLs only",
+                "automatically_retrieved": False,
+                "verified_metrics_available": False,
             },
             "request_id": request.request_id,
         })
@@ -90,12 +117,20 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             return error_response(413, "upload_too_large", "The upload exceeds the configured size limit.", request.request_id)
         caption = request.form.get("caption", "")
         topic = request.form.get("topic", "")
+        raw_reference_urls = request.form.get("reference_urls", "")
         if len(caption) > 2200 or len(topic) > 120:
             return error_response(
                 400, "invalid_context",
                 "Caption must be 2,200 characters or fewer and topic must be 120 characters or fewer.",
                 request.request_id,
             )
+        if len(raw_reference_urls) > 12000:
+            return error_response(400, "invalid_references", "Reference URL input is too long.", request.request_id)
+        try:
+            references = parse_user_references(raw_reference_urls)
+        except InvalidReferenceError as exc:
+            return error_response(400, "invalid_references", str(exc), request.request_id)
+        gemini_requested = request.form.get("gemini_consent", "").lower() in {"true", "yes", "1"}
         predictor = app.extensions["predictor"]
         if not predictor.available:
             return error_response(
@@ -105,6 +140,12 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             )
 
         temp_path = None
+        gemini_result = {
+            "status": "not_requested",
+            "model": app.config["GEMINI_MODEL"],
+            "analysis": None,
+            "message": "Gemini video analysis was not requested.",
+        }
         try:
             with _temporary_upload(upload, suffix, app.config["UPLOAD_DIR"]) as saved_path:
                 temp_path = saved_path
@@ -113,6 +154,31 @@ def create_app(config_overrides: dict | None = None) -> Flask:
                     int(app.config["AUDIO_TIMEOUT_SECONDS"]),
                     int(app.config["VIDEO_TIMEOUT_SECONDS"]),
                 )
+                analyzer = app.extensions["gemini_analyzer"]
+                if gemini_requested and not analyzer.available:
+                    gemini_result.update({
+                        "status": "unavailable",
+                        "message": "Gemini is not configured; local analysis and recommendations are available.",
+                    })
+                elif gemini_requested:
+                    try:
+                        analysis = analyzer.analyze(saved_path, features, caption, topic)
+                        gemini_result.update({
+                            "status": "complete",
+                            "analysis": analysis,
+                            "message": "Gemini content analysis completed.",
+                        })
+                    except GeminiAnalysisError as exc:
+                        logging.warning(
+                            "Gemini analysis failed for request %s (%s)",
+                            request.request_id,
+                            type(exc).__name__,
+                        )
+                        gemini_result.update({
+                            "status": "error",
+                            "message": "Gemini content analysis is unavailable; local analysis remains available.",
+                        })
+                        warnings.append("Gemini content analysis could not be completed; local recommendations are shown.")
             estimates = predictor.predict(features)
             try:
                 recommendations = generate_recommendations(features, caption, topic)
@@ -126,6 +192,21 @@ def create_app(config_overrides: dict | None = None) -> Flask:
                 "features": features,
                 "estimates": estimates,
                 "recommendations": recommendations,
+                "content_analysis": gemini_result,
+                "audience_hypotheses": (
+                    gemini_result["analysis"]["potential_audiences"]
+                    if gemini_result["analysis"] else []
+                ),
+                "references": references,
+                "methodology": {
+                    "measured_properties": "Extracted locally from the uploaded video and optional supplied caption.",
+                    "ai_content_analysis": (
+                        "Generated by Google Gemini only after explicit consent; timestamps are checked against video duration."
+                    ),
+                    "experimental_predictions": "Produced by the existing ML pipelines trained and evaluated on synthetic data.",
+                    "verified_external_metrics": "None. Reference URLs are user-provided and are not fetched or verified.",
+                    "audience_hypotheses": "Potential audience hypotheses from Gemini are not actual viewer demographics.",
+                },
                 "warnings": warnings,
                 "disclaimer": DISCLAIMER,
             })

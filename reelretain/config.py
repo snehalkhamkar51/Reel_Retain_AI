@@ -33,5 +33,9 @@ def get_config() -> dict:
         "UPLOAD_DIR": upload_dir,
         "AUDIO_TIMEOUT_SECONDS": _positive_int("REELRETAIN_AUDIO_TIMEOUT_SECONDS", 15),
         "VIDEO_TIMEOUT_SECONDS": _positive_int("REELRETAIN_VIDEO_TIMEOUT_SECONDS", 30),
+        "GEMINI_API_KEY": os.getenv("REELRETAIN_GEMINI_API_KEY", ""),
+        "GEMINI_MODEL": os.getenv("REELRETAIN_GEMINI_MODEL", "gemini-3.8-flash"),
+        "GEMINI_TIMEOUT_SECONDS": _positive_int("REELRETAIN_GEMINI_TIMEOUT_SECONDS", 120),
+        "GEMINI_POLL_INTERVAL_SECONDS": _positive_int("REELRETAIN_GEMINI_POLL_INTERVAL_SECONDS", 2),
         "TESTING": False,
     }

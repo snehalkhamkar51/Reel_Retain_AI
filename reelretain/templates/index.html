@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#080b12">
     <meta name="description" content="Analyze a short-form video before publishing with measured features and clearly labeled experimental retention estimates.">
     <title>ReelRetain AI — Know your reel before you post</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='5') }}">
-    <script type="module" src="{{ url_for('static', filename='js/app.js', v='5') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='8') }}">
+    <script type="module" src="{{ url_for('static', filename='js/app.js', v='8') }}"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -39,7 +39,7 @@
             <a class="button button-primary" href="#analyze">Analyze my reel <span aria-hidden="true">→</span></a>
             <a class="button button-quiet" href="#about"><span class="play-icon" aria-hidden="true">▶</span> Explore how it works</a>
           </div>
-          <div class="hero-proof"><span class="proof-icon" aria-hidden="true">✳</span> Private by design <i></i> No social account needed <i></i> Your upload is not retained</div>
+          <div class="hero-proof"><span class="proof-icon" aria-hidden="true">✳</span> Local analysis by default <i></i> No social account needed <i></i> Optional external analysis requires consent</div>
         </div>
         <div class="hero-visual" aria-label="Illustrative preview of video analysis">
           <div class="orb orb-one"></div><div class="orb orb-two"></div>
@@ -72,7 +72,7 @@
       </section>
 
       <section class="trust-strip" aria-label="Product principles">
-        <div><span class="strip-icon">◎</span> Your file stays yours</div><i></i><div><span class="strip-icon">⌁</span> Real features, not guesswork</div><i></i><div><span class="strip-icon">✳</span> Honest about the limits</div>
+        <div><span class="strip-icon">◎</span> Local file removed after processing</div><i></i><div><span class="strip-icon">⌁</span> Measured features, clearly labeled</div><i></i><div><span class="strip-icon">✳</span> Honest about the limits</div>
       </section>
 
       <section class="section section-wrap features-section" aria-labelledby="features-title">
@@ -95,7 +95,7 @@
           </div>
           <div class="analyzer-shell">
             <div class="analyzer-main">
-              <div class="analyzer-top"><div><span class="step-label"><span class="step-number">01</span> VIDEO INPUT</span><h3>Bring your reel</h3></div><span class="local-badge"><span class="pulse-dot"></span> PROCESSED LOCALLY</span></div>
+              <div class="analyzer-top"><div><span class="step-label"><span class="step-number">01</span> VIDEO INPUT</span><h3>Bring your reel</h3></div><span class="local-badge"><span class="pulse-dot"></span> LOCAL FIRST</span></div>
               <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Choose or drop a video file">
                 <input class="sr-only" id="video-input" type="file" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/x-msvideo,.mp4,.mov,.m4v,.webm,.avi">
                 <div class="dropzone-empty" id="dropzone-empty">
@@ -111,14 +111,19 @@
               </div>
               <div class="field-group"><label for="topic">Topic or niche <span class="optional">(optional)</span></label><input id="topic" type="text" maxlength="120" placeholder="e.g. beginner home gardening"></div>
               <div class="field-group"><label for="caption">Caption <span class="optional">(optional)</span></label><textarea id="caption" rows="3" maxlength="2200" placeholder="Paste your caption to include its word and hashtag count…"></textarea><div class="field-meta"><span>Only text counts are measured; timing isn’t inferred.</span><span id="caption-count">0 / 2200</span></div></div>
-              <div class="analyzer-submit"><button id="analyze-button" class="button button-primary analyze-button" type="button" disabled><span class="button-label">Analyze my video</span><span class="button-arrow" aria-hidden="true">→</span></button><span class="submit-note"><span aria-hidden="true">⌑</span> Video is removed after analysis</span></div>
+              <div class="external-consent">
+                <label><input id="gemini-consent" type="checkbox" disabled><span><b>Allow optional Gemini video understanding</b><small>If enabled and configured, the video is sent to Google for content analysis. Processing is subject to Google's terms. ReelRetain requests deletion of its temporary Gemini file after analysis; processing data may be handled under Google's policies.</small></span></label>
+                <p id="gemini-availability" role="status">Gemini is optional and is not enabled until configured by the app owner.</p>
+              </div>
+              <div class="field-group"><label for="reference-urls">Public reference reels <span class="optional">(optional, up to 5)</span></label><textarea id="reference-urls" rows="2" maxlength="12000" placeholder="Paste public YouTube, Instagram Reel, or TikTok URLs, one per line…"></textarea><div class="field-meta"><span>Links are not fetched or verified; no metrics are retrieved.</span><span>URL input only</span></div></div>
+              <div class="analyzer-submit"><button id="analyze-button" class="button button-primary analyze-button" type="button" disabled><span class="button-label">Analyze my video</span><span class="button-arrow" aria-hidden="true">→</span></button><span class="submit-note"><span aria-hidden="true">⌑</span> Local upload removed after analysis</span></div>
               <div class="upload-error hidden" id="upload-error" role="alert" aria-live="assertive"></div>
               <div class="progress-panel hidden" id="progress-panel" role="status" aria-live="polite"><div class="progress-spinner"></div><div class="progress-copy"><b id="progress-title">Preparing your video</b><span id="progress-message">Waiting to upload…</span></div><div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div><span class="progress-percent" id="progress-percent"></span></div>
             </div>
             <aside class="analyzer-aside">
               <div class="aside-lock"><span>⌑</span> PRIVATE BY DESIGN</div>
               <h3>Your draft.<br>Your device.<br><span>More clarity.</span></h3>
-              <p>Your video is sent to this app’s local analysis service and removed from its temporary upload directory after processing.</p>
+              <p>Your video is analyzed by this app and its local temporary copy is removed after processing. If you opt in above, a copy is also sent to Google for Gemini analysis; remote processing follows Google’s policies.</p>
               <div class="aside-divider"></div>
               <div class="aside-spec"><span>01</span><div><b>Video signals</b><small>Structure, motion &amp; audio</small></div><i>↗</i></div>
               <div class="aside-spec"><span>02</span><div><b>Caption counts</b><small>Words &amp; hashtags</small></div><i>↗</i></div>
@@ -128,11 +133,36 @@
 
           <section class="results-section hidden" id="results" aria-labelledby="results-title" aria-live="polite">
             <div class="results-heading"><div><div class="eyebrow">YOUR VIDEO, IN FOCUS</div><h2 id="results-title">The signal<br><span class="text-muted">behind your story.</span></h2><p class="results-file" id="results-file"></p></div><div class="result-actions"><button class="button button-secondary" id="download-report" type="button">Download report <span>↓</span></button><button class="button button-primary" id="analyze-another" type="button">Analyze another <span>↗</span></button></div></div>
-            <details class="model-limitations" id="result-disclaimer"><summary>Experimental estimates — synthetic training data</summary><p>ReelRetain AI currently uses models trained on synthetic data. Its retention estimates have not been validated against real audience analytics and may differ from actual results. Use them as experimental guidance, not as guaranteed outcomes.</p></details>
+            <details class="model-limitations" id="result-disclaimer"><summary>Experimental estimates — synthetic training data</summary><p>Experimental retention estimates: this model was trained on synthetic data and has not been validated against real audience-retention analytics. Predictions are not actual platform analytics or guarantees.</p></details>
             <div class="metrics-grid" id="metrics-grid"></div>
             <section class="attraction-lab" aria-labelledby="attraction-title">
               <div class="attraction-heading"><div><div class="eyebrow">PRACTICAL NEXT STEPS</div><h3 id="attraction-title">Audience Attraction Lab</h3></div><p id="recommendation-context"></p></div>
               <div class="recommendation-list" id="recommendation-list" aria-live="polite"></div>
+            </section>
+            <section class="intelligence-section" aria-labelledby="content-analysis-title">
+              <div class="section-heading-inline"><div><div class="eyebrow">OPTIONAL VIDEO UNDERSTANDING</div><h3 id="content-analysis-title">Gemini content analysis</h3></div><span class="source-tag">AI-GENERATED · NOT VERIFIED FACTS</span></div>
+              <p class="section-state" id="content-analysis-state" role="status"></p>
+              <div id="content-analysis-details" class="content-analysis-details hidden">
+                <div class="analysis-overview"><b id="analysis-topic"></b><p id="analysis-description"></p></div>
+                <div class="analysis-fields" id="analysis-fields"></div>
+                <div class="result-card-head"><h4>Your Reel Improvement Plan</h4><span class="source-tag">GEMINI CONTENT ANALYSIS</span></div>
+                <div class="recommendation-list" id="improvement-plan"></div>
+                <div class="analysis-block"><h4>Three opening-hook alternatives</h4><div id="gemini-hooks" class="hook-list"></div></div>
+                <div class="analysis-block"><h4>Caption options and CTAs</h4><div id="gemini-captions" class="hook-list"></div></div>
+                <div class="analysis-fields" id="analysis-moments"></div>
+                <div class="analysis-fields" id="analysis-overlays-storyboard"></div>
+                <div class="analysis-notes" id="analysis-uncertainties"></div>
+              </div>
+            </section>
+            <section class="audience-section" aria-labelledby="potential-audience-title">
+              <div class="section-heading-inline"><div><div class="eyebrow">CONTENT-BASED IDEAS ONLY</div><h3 id="potential-audience-title">Potential Audience</h3></div><span class="source-tag">HYPOTHESES · NOT ACTUAL VIEWERS</span></div>
+              <p class="section-state" id="audience-state" role="status"></p>
+              <div class="audience-list" id="audience-list"></div>
+            </section>
+            <section class="reference-section" aria-labelledby="reference-title">
+              <div class="section-heading-inline"><div><div class="eyebrow">NO AUTOMATED SCRAPING</div><h3 id="reference-title">Compare With Published Reels</h3></div><span class="source-tag">USER-PROVIDED SOURCES</span></div>
+              <p class="section-state">ReelRetain does not search platforms or retrieve engagement metrics. Supplied links are not fetched or verified; public metrics, dates, durations, similarities, and retention data are not inferred.</p>
+              <div class="reference-list" id="reference-list"></div>
             </section>
             <div class="results-grid">
               <article class="result-card chart-card"><div class="result-card-head"><div><span class="card-index">MODEL OUTPUTS</span><h3>Estimate comparison</h3></div><span class="chart-badge">LIVE RESPONSE</span></div><p class="card-intro">Bars are scaled within each metric’s display range; units are shown separately.</p><div class="metric-chart-wrap"><canvas id="metric-chart" role="img" aria-label="Chart comparing analysis estimates"></canvas></div><ul class="chart-legend" id="chart-legend"></ul></article>
@@ -141,6 +171,13 @@
               <article class="result-card signals-card"><div class="result-card-head"><div><span class="card-index">VIDEO STRUCTURE</span><h3>Signal profile</h3></div><span class="chart-badge">ACTUAL FEATURES</span></div><p class="card-intro">Relative feature bars visualize extracted values—not a frame-by-frame retention timeline.</p><div class="signal-profile" id="signal-profile"></div><p class="chart-description" id="signal-description"></p></article>
             </div>
             <div class="warning-list hidden" id="warning-list" role="status"></div>
+            <details class="methodology-section"><summary>How ReelRetain AI analyzes your reel</summary><ol>
+              <li><b>Measured properties:</b> local video extraction records duration, sampled scene changes, motion, available audio features, and supplied caption counts.</li>
+              <li><b>AI-generated content analysis:</b> optional Gemini analysis describes the video only after explicit consent; its observations and timestamp suggestions are not independently verified.</li>
+              <li><b>Experimental ML predictions:</b> the existing model estimates retention-related outcomes from synthetic training patterns; Gemini does not supply or change those numbers.</li>
+              <li><b>Verified external metrics:</b> none are retrieved. User-provided reference URLs are shown as unverified links only.</li>
+              <li><b>Hypotheses and guidance:</b> audience hypotheses and editing suggestions are ideas to test, not observed viewer behavior.</li>
+            </ol></details>
             <div class="results-footer"><span>Analysis ID <code id="request-id"></code></span><span>Estimates are not a measure of future audience behavior.</span></div>
           </section>
         </div>
@@ -149,13 +186,14 @@
       <section class="section section-wrap how-section" id="about">
         <div class="section-heading">
           <div><div class="eyebrow">A CLEARER PROCESS, NOT A CRYSTAL BALL</div><h2 id="how-title">From first frame<br><span class="text-muted">to thoughtful next step.</span></h2></div>
-          <p>ReelRetain turns a draft into a handful of measurable signals and experimental model outputs. You stay in charge of the edit.</p>
+          <p>ReelRetain separates measured properties, optional AI interpretation, experimental model predictions, unverified links, and practical hypotheses. You stay in charge of the edit.</p>
         </div>
         <div class="steps-grid">
-          <article class="step-card"><span class="step-number-large">01</span><div class="step-line"></div><h3>Share a draft</h3><p>Choose a short video and optionally add its caption. No social login or connected account required.</p></article>
-          <article class="step-card"><span class="step-number-large">02</span><div class="step-line"></div><h3>Measure the signals</h3><p>The local service extracts video metadata, sampled-frame changes, motion, audio where available, and caption counts.</p></article>
-          <article class="step-card"><span class="step-number-large">03</span><div class="step-line"></div><h3>Explore the estimates</h3><p>Three regression pipelines return clearly labeled synthetic estimates alongside the measured features and limitations.</p></article>
-          <article class="step-card"><span class="step-number-large">04</span><div class="step-line"></div><h3>Make it yours</h3><p>Use conditional, feature-based prompts to review the edit. Your judgment—and real audience evidence—still matters.</p></article>
+          <article class="step-card"><span class="step-number-large">01</span><div class="step-line"></div><h3>Measure locally</h3><p>Video properties and available audio/caption features are extracted by the local service.</p></article>
+          <article class="step-card"><span class="step-number-large">02</span><div class="step-line"></div><h3>Interpret with consent</h3><p>Optional Gemini content analysis runs only after you opt in; it does not replace the ML estimates.</p></article>
+          <article class="step-card"><span class="step-number-large">03</span><div class="step-line"></div><h3>Estimate experimentally</h3><p>The existing model estimates retention-related outcomes using synthetic training patterns—not real audience analytics.</p></article>
+          <article class="step-card"><span class="step-number-large">04</span><div class="step-line"></div><h3>Check references</h3><p>Only links you provide are listed. This prototype does not fetch platform details or public metrics.</p></article>
+          <article class="step-card"><span class="step-number-large">05</span><div class="step-line"></div><h3>Plan a next edit</h3><p>Practical suggestions and potential audience hypotheses are labeled as ideas—not measured viewer behavior.</p></article>
         </div>
         <div class="honesty-panel"><div class="honesty-symbol">!</div><div><span class="card-index">MODEL LIMITATIONS</span><h3>Experimental estimates from synthetic data.</h3><p>Not validated against real audience analytics. Use estimates as guidance, not as guaranteed outcomes.</p></div><a href="#analyze" class="text-link">Try your draft <span>↗</span></a></div>
       </section>

@@ -10,6 +10,8 @@ ReelRetain AI is a local prototype for extracting measurable features from short
 - `training/train_model.py` trains from the supplied local dataset path; `ml/` validates the CSV, fits a separate scikit-learn pipeline for each synthetic target, compares Linear Regression, Random Forest, and Gradient Boosting, and saves selected pipelines and a report.
 - `reelretain/predict.py` loads trained artifacts and returns constrained experimental estimates.
 - `reelretain/recommendations.py` builds topic-, caption-, and measured-feature-based edit suggestions without an external AI service.
+- `reelretain/gemini_analysis.py` optionally sends a consented uploaded video to Google's supported Gen AI Python SDK for structured content understanding, validates the output and timestamps, and requests deletion of its temporary remote file.
+- `reelretain/references.py` validates user-supplied YouTube, Instagram Reel, and TikTok links without fetching or scraping them.
 - `reelretain/app.py` provides the Flask health, model-info, and video-analysis endpoints, including recommendation results and a logged fallback if generation fails.
 
 The pipeline uses only recognized feature columns; target columns and `record_id` are never model inputs. Numeric and categorical features are imputed and transformed within a `ColumnTransformer` fitted on training data. Candidate selection uses validation MAE, with a separate held-out test set reserved for the selected model's final metrics.
@@ -49,7 +51,7 @@ Each target's report lists validation MAE/RMSE/R² for all candidate models and 
 python run.py
 ```
 
-The landing page, video analyzer, results dashboard, static assets, and JSON API are served by Flask at `http://127.0.0.1:5000` by default. No second frontend process, package manager, paid API, or CORS configuration is required. Environment configuration (all optional; copy `.env.example` to `.env` to load local settings):
+The landing page, video analyzer, results dashboard, static assets, and JSON API are served by Flask at `http://127.0.0.1:5000` by default. No second frontend or CORS configuration is required. Gemini content understanding is optional and may incur Google API charges; all local extraction, synthetic model estimates, and deterministic suggestions remain available without a key. To enable Gemini, create a Google Gemini API key, copy `.env.example` to `.env`, set `REELRETAIN_GEMINI_API_KEY` in that ignored local file, and restart the app. The UI requires explicit consent for each uploaded video before sending it to Google. ReelRetain requests deletion of its temporary remote Gemini file after processing, but Google's processing and retention are subject to Google's policies. Never commit `.env` or paste the key into source code. Environment configuration:
 
 | Variable | Default | Purpose |
 |---|---:|---|
@@ -60,6 +62,10 @@ The landing page, video analyzer, results dashboard, static assets, and JSON API
 | `REELRETAIN_UPLOAD_DIR` | `uploads` | Temporary upload directory (files are removed after processing) |
 | `REELRETAIN_AUDIO_TIMEOUT_SECONDS` | `15` | FFmpeg audio extraction timeout |
 | `REELRETAIN_VIDEO_TIMEOUT_SECONDS` | `30` | OpenCV video decoding timeout |
+| `REELRETAIN_GEMINI_API_KEY` | empty | Optional Google Gemini API key; required for external content understanding |
+| `REELRETAIN_GEMINI_MODEL` | `gemini-3.8-flash` | Optional Gemini model used for video analysis |
+| `REELRETAIN_GEMINI_TIMEOUT_SECONDS` | `120` | Gemini API and file-processing timeout |
+| `REELRETAIN_GEMINI_POLL_INTERVAL_SECONDS` | `2` | Remote video processing poll interval |
 
 Do not expose the development server directly to the public internet. Run behind a production WSGI server and add deployment-specific request/time limits for hosted use.
 
@@ -75,7 +81,7 @@ Returns supported feature names, target definitions, synthetic-data disclosure, 
 
 ### `POST /api/analyze`
 
-Send `multipart/form-data` with a `video` file and optional UTF-8 `caption` and `topic` fields. The topic can be a subject or niche and is limited to 120 characters; captions are limited to 2,200 characters.
+Send `multipart/form-data` with a `video` file, optional UTF-8 `caption` and `topic`, optional `reference_urls` (one allowlisted public URL per line, at most five), and `gemini_consent=true` only when the uploader has explicitly opted in. The topic can be a subject or niche and is limited to 120 characters; captions are limited to 2,200 characters. Omitting the consent field never sends the video to Google.
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:5000/api/analyze `
@@ -84,9 +90,17 @@ curl.exe -X POST http://127.0.0.1:5000/api/analyze `
   -F "topic=beginner home gardening"
 ```
 
+To explicitly request external Gemini processing, add `-F "gemini_consent=true"` after informing the video owner. For user-supplied references, add `-F "reference_urls=https://youtu.be/VIDEO_ID"`; these URLs are not visited by ReelRetain.
+
 Successful response fields include `features`, `estimates` (units, raw prediction, display-constrained estimate, and whether it was constrained), `recommendations` (`mode`, context, and prioritized suggestion items), `warnings`, `request_id`, and `disclaimer`. Suggestions use the supplied topic/caption and measured visual features; audio-specific guidance appears only when audio energy was extracted. Without a topic or caption, the response marks its advice as general. These are feature-based suggestions, not predictions of audience response. Watched percentage and early drop-off are constrained to 0–100%; average watch time is constrained to 0–video duration. The response clearly labels estimates as synthetic-model outputs, not measurements. Without trained artifacts, the endpoint returns HTTP 503 with recovery instructions. Validation and processing errors use a consistent JSON error shape and request ID.
 
 The results page includes an Audience Attraction Lab with three opening hooks, visual/pacing guidance, a caption and call to action, overlay text, an ending suggestion, and audio guidance when audio was analyzed. Hooks and caption examples have copy buttons. The concise “Experimental estimates — synthetic training data” notice remains visible next to the estimates and can be expanded for the full limitation.
+
+When Gemini is explicitly enabled, the report also includes a video description, topic, opening and structure observations, timestamped moments only when valid and within the measured duration, editing suggestions, caption/CTA options, a mini storyboard, audio notes when provided, and potential audience hypotheses. These are model-generated suggestions, not independently verified facts or actual audience demographics. Invalid/out-of-range timestamps are removed. Gemini does not supply or alter numeric retention estimates; those still come exclusively from the existing synthetic-data ML models. If Gemini is unavailable or fails, local predictions and deterministic suggestions continue to work.
+
+The reference section accepts up to five HTTPS public-video URLs from YouTube, Instagram Reels, or TikTok. It does not call platform APIs or retrieve titles, creators, dates, views, likes, comments, or retention measurements. Each link is labeled user-provided and unverified; no metric comparison is claimed. Platform API access and reliable public retention data are not available in this prototype.
+
+The integration uses the official [`google-genai` Python SDK](https://github.com/googleapis/python-genai), the [Gemini video understanding](https://ai.google.dev/gemini-api/docs/video-understanding) Files API upload and the [Interactions API structured-output](https://ai.google.dev/gemini-api/docs/structured-output) request. The selected default model is `gemini-3.8-flash`; it can be changed using `REELRETAIN_GEMINI_MODEL`. The report and UI distinguish locally measured properties, Gemini-generated analysis, experimental ML estimates, unverified user-supplied references, and audience hypotheses/general advice. A future real-retention model would require creator-authorized videos paired with actual retention analytics, documented consent and provenance, and leakage-resistant evaluation on representative real-world splits; that training/validation path is not implemented or claimed here.
 
 ## Dataset schema and feature contract
 

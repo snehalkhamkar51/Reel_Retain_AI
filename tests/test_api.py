@@ -4,6 +4,7 @@ import pytest
 
 from reelretain.app import create_app
 from reelretain.features import FeatureExtractionError, TARGET_COLUMNS
+from reelretain.gemini_analysis import GeminiAnalysisError
 
 
 class ReadyPredictor:
@@ -34,6 +35,7 @@ def app(tmp_path):
         "MAX_CONTENT_LENGTH": 1024,
         "AUDIO_TIMEOUT_SECONDS": 1,
         "VIDEO_TIMEOUT_SECONDS": 1,
+        "GEMINI_API_KEY": "",
     })
 
 
@@ -45,6 +47,9 @@ def test_health_and_model_info_report_missing_models(app):
     assert health.json["model_status"] == "unavailable"
     assert info.status_code == 200
     assert info.json["model"]["available"] is False
+    assert info.json["content_analysis"]["available"] is False
+    assert info.json["content_analysis"]["requires_explicit_consent"] is True
+    assert info.json["reference_retrieval"]["automatically_retrieved"] is False
     assert "synthetic" in info.json["model"]["disclaimer"].lower()
     assert info.json["upload"]["max_bytes"] == 1024
     assert ".mp4" in info.json["upload"]["extensions"]
@@ -65,6 +70,11 @@ def test_homepage_and_frontend_assets_are_served_by_flask(app):
     assert b"Experimental estimates \xe2\x80\x94 synthetic training data" in homepage.data
     assert b"id=\"topic\"" in homepage.data
     assert b"id=\"recommendation-list\"" in homepage.data
+    assert b"gemini-consent" in homepage.data
+    assert b"Your Reel Improvement Plan" in homepage.data
+    assert b"Potential Audience" in homepage.data
+    assert b"Compare With Published Reels" in homepage.data
+    assert b"How ReelRetain AI analyzes your reel" in homepage.data
     assert b'type="module"' in homepage.data
     assert stylesheet.status_code == 200
     assert b"#080b12" in stylesheet.data
@@ -75,6 +85,8 @@ def test_homepage_and_frontend_assets_are_served_by_flask(app):
     assert b"Copy caption" in application.data
     assert b"navigator.clipboard.writeText" in application.data
     assert b"recommendations.items.map" in application.data
+    assert b"content_analysis" in application.data
+    assert b"verified_metrics_available" not in application.data
     assert api_module.status_code == 200
 
 
@@ -152,7 +164,154 @@ def test_successful_analysis_cleans_temporary_upload(app, monkeypatch):
     assert "urban gardening" in response.json["recommendations"]["items"][0]["example"]
     assert not any(item["category"] == "Audio" for item in response.json["recommendations"]["items"])
     assert response.json["warnings"] == ["Audio unavailable"]
+    assert response.json["content_analysis"]["status"] == "not_requested"
+    assert response.json["audience_hypotheses"] == []
+    assert response.json["references"] == []
+    assert "synthetic" in response.json["methodology"]["experimental_predictions"]
     assert not seen_path["path"].exists()
+
+
+def test_consent_sends_video_to_configured_gemini_and_returns_analysis(app, monkeypatch):
+    class FakeGemini:
+        available = True
+
+        def analyze(self, path, features, caption, topic):
+            assert path.is_file()
+            assert features["video_duration_sec"] == 8.0
+            assert caption == "Hello #test"
+            assert topic == "gardening"
+            return {"main_topic_and_niche": "Gardening", "potential_audiences": []}
+
+    app.extensions["predictor"] = ReadyPredictor()
+    app.extensions["gemini_analyzer"] = FakeGemini()
+    monkeypatch.setattr(
+        "reelretain.app.extract_video_features",
+        lambda *_args: ({"video_duration_sec": 8.0}, []),
+    )
+    response = app.test_client().post(
+        "/api/analyze",
+        data={
+            "video": (io.BytesIO(b"video-bytes"), "clip.mp4", "video/mp4"),
+            "gemini_consent": "true",
+            "caption": "Hello #test",
+            "topic": "gardening",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.json["content_analysis"]["status"] == "complete"
+    assert response.json["content_analysis"]["analysis"]["main_topic_and_niche"] == "Gardening"
+    assert response.json["audience_hypotheses"] == []
+
+
+def test_gemini_provider_failure_keeps_local_report_available(app, monkeypatch, caplog):
+    class BrokenGemini:
+        available = True
+
+        def analyze(self, *_args):
+            raise GeminiAnalysisError("simulated provider failure")
+
+    app.extensions["predictor"] = ReadyPredictor()
+    app.extensions["gemini_analyzer"] = BrokenGemini()
+    monkeypatch.setattr(
+        "reelretain.app.extract_video_features",
+        lambda *_args: ({"video_duration_sec": 8.0}, []),
+    )
+    response = app.test_client().post(
+        "/api/analyze",
+        data={
+            "video": (io.BytesIO(b"video-bytes"), "clip.mp4", "video/mp4"),
+            "gemini_consent": "true",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.json["estimates"]
+    assert response.json["recommendations"]["items"]
+    assert response.json["content_analysis"]["status"] == "error"
+    assert "Gemini analysis failed" in caplog.text
+
+
+def test_gemini_consent_without_configured_key_does_not_send_video(app, monkeypatch):
+    app.extensions["predictor"] = ReadyPredictor()
+    monkeypatch.setattr(
+        "reelretain.app.extract_video_features",
+        lambda *_args: ({"video_duration_sec": 8.0}, []),
+    )
+    response = app.test_client().post(
+        "/api/analyze",
+        data={
+            "video": (io.BytesIO(b"video-bytes"), "clip.mp4", "video/mp4"),
+            "gemini_consent": "true",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.json["content_analysis"]["status"] == "unavailable"
+    assert response.json["estimates"]
+
+
+def test_gemini_is_not_called_without_explicit_consent(app, monkeypatch):
+    class ConsentGuard:
+        available = True
+
+        def analyze(self, *_args):
+            raise AssertionError("Gemini must not be called without consent.")
+
+    app.extensions["predictor"] = ReadyPredictor()
+    app.extensions["gemini_analyzer"] = ConsentGuard()
+    monkeypatch.setattr(
+        "reelretain.app.extract_video_features",
+        lambda *_args: ({"video_duration_sec": 8.0}, []),
+    )
+    response = app.test_client().post(
+        "/api/analyze",
+        data={"video": (io.BytesIO(b"video-bytes"), "clip.mp4", "video/mp4")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.json["content_analysis"]["status"] == "not_requested"
+    assert response.json["recommendations"]["items"]
+
+
+def test_user_supplied_references_are_never_misrepresented_as_verified(app, monkeypatch):
+    app.extensions["predictor"] = ReadyPredictor()
+    monkeypatch.setattr(
+        "reelretain.app.extract_video_features",
+        lambda *_args: ({"video_duration_sec": 8.0}, []),
+    )
+    response = app.test_client().post(
+        "/api/analyze",
+        data={
+            "video": (io.BytesIO(b"video-bytes"), "clip.mp4", "video/mp4"),
+            "reference_urls": "https://www.youtube.com/watch?v=sample123",
+        },
+        content_type="multipart/form-data",
+    )
+
+    reference = response.json["references"][0]
+    assert response.status_code == 200
+    assert reference["verified"] is False
+    assert reference["public_metrics"] is None
+    assert reference["evidence_source"] == "user_provided_url"
+
+
+def test_api_rejects_unsupported_reference_url(app):
+    response = app.test_client().post(
+        "/api/analyze",
+        data={
+            "video": (io.BytesIO(b"video-bytes"), "clip.mp4", "video/mp4"),
+            "reference_urls": "https://example.com/video",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.json["error"]["code"] == "invalid_references"
 
 
 def test_successful_analysis_generates_general_recommendations_without_caption_or_audio(app, monkeypatch):
