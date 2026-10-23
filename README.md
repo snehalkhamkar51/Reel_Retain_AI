@@ -9,7 +9,8 @@ ReelRetain AI is a local prototype for extracting measurable features from short
 - `reelretain/features.py` extracts video metadata, sampled-frame scene changes and motion, optional FFmpeg audio energy/silence, and caption counts. Speech rate, hook timing, and caption synchronization are left unavailable unless a reliable measurement is implemented.
 - `training/train_model.py` trains from the supplied local dataset path; `ml/` validates the CSV, fits a separate scikit-learn pipeline for each synthetic target, compares Linear Regression, Random Forest, and Gradient Boosting, and saves selected pipelines and a report.
 - `reelretain/predict.py` loads trained artifacts and returns constrained experimental estimates.
-- `reelretain/app.py` provides the Flask health, model-info, and video-analysis endpoints.
+- `reelretain/recommendations.py` builds topic-, caption-, and measured-feature-based edit suggestions without an external AI service.
+- `reelretain/app.py` provides the Flask health, model-info, and video-analysis endpoints, including recommendation results and a logged fallback if generation fails.
 
 The pipeline uses only recognized feature columns; target columns and `record_id` are never model inputs. Numeric and categorical features are imputed and transformed within a `ColumnTransformer` fitted on training data. Candidate selection uses validation MAE, with a separate held-out test set reserved for the selected model's final metrics.
 
@@ -74,15 +75,18 @@ Returns supported feature names, target definitions, synthetic-data disclosure, 
 
 ### `POST /api/analyze`
 
-Send `multipart/form-data` with a `video` file and optional UTF-8 `caption` field:
+Send `multipart/form-data` with a `video` file and optional UTF-8 `caption` and `topic` fields. The topic can be a subject or niche and is limited to 120 characters; captions are limited to 2,200 characters.
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:5000/api/analyze `
   -F "video=@.\sample.mp4;type=video/mp4" `
-  -F "caption=An example caption #reels"
+  -F "caption=An example caption #reels" `
+  -F "topic=beginner home gardening"
 ```
 
-Successful response fields include `features`, `estimates` (units, raw prediction, display-constrained estimate, and whether it was constrained), `warnings`, `request_id`, and `disclaimer`. Watched percentage and early drop-off are constrained to 0–100%; average watch time is constrained to 0–video duration. The response clearly labels them as synthetic-model estimates, not measurements. Without trained artifacts, the endpoint returns HTTP 503 with recovery instructions. Validation and processing errors use a consistent JSON error shape and request ID.
+Successful response fields include `features`, `estimates` (units, raw prediction, display-constrained estimate, and whether it was constrained), `recommendations` (`mode`, context, and prioritized suggestion items), `warnings`, `request_id`, and `disclaimer`. Suggestions use the supplied topic/caption and measured visual features; audio-specific guidance appears only when audio energy was extracted. Without a topic or caption, the response marks its advice as general. These are feature-based suggestions, not predictions of audience response. Watched percentage and early drop-off are constrained to 0–100%; average watch time is constrained to 0–video duration. The response clearly labels estimates as synthetic-model outputs, not measurements. Without trained artifacts, the endpoint returns HTTP 503 with recovery instructions. Validation and processing errors use a consistent JSON error shape and request ID.
+
+The results page includes an Audience Attraction Lab with three opening hooks, visual/pacing guidance, a caption and call to action, overlay text, an ending suggestion, and audio guidance when audio was analyzed. Hooks and caption examples have copy buttons. The concise “Experimental estimates — synthetic training data” notice remains visible next to the estimates and can be expanded for the full limitation.
 
 ## Dataset schema and feature contract
 

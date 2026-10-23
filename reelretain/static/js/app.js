@@ -21,6 +21,7 @@ const elements = {
   fileDetails: document.querySelector("#file-details"),
   remove: document.querySelector("#remove-video"),
   caption: document.querySelector("#caption"),
+  topic: document.querySelector("#topic"),
   captionCount: document.querySelector("#caption-count"),
   limit: document.querySelector("#upload-limit"),
   formatChips: document.querySelector("#format-chips"),
@@ -34,6 +35,8 @@ const elements = {
   results: document.querySelector("#results"),
   resultFile: document.querySelector("#results-file"),
   disclaimer: document.querySelector("#result-disclaimer"),
+  recommendationContext: document.querySelector("#recommendation-context"),
+  recommendations: document.querySelector("#recommendation-list"),
   metrics: document.querySelector("#metrics-grid"),
   chart: document.querySelector("#metric-chart"),
   legend: document.querySelector("#chart-legend"),
@@ -83,6 +86,7 @@ elements.remove.addEventListener("click", (event) => {
 elements.caption.addEventListener("input", () => {
   elements.captionCount.textContent = `${elements.caption.value.length} / 2200`;
 });
+elements.recommendations.addEventListener("click", copyRecommendation);
 elements.submit.addEventListener("click", submitAnalysis);
 elements.analyzeAnother.addEventListener("click", resetForAnother);
 elements.download.addEventListener("click", downloadReport);
@@ -219,7 +223,7 @@ async function submitAnalysis() {
   elements.results.classList.add("hidden");
   showProgress("Uploading video", "Sending the selected video to the local analysis service…", 0, false);
   try {
-    const response = await analyzeVideo(selectedFile, elements.caption.value, updateProgress);
+    const response = await analyzeVideo(selectedFile, elements.caption.value, elements.topic.value, updateProgress);
     validateResponse(response);
     latestAnalysis = response;
     elements.progress.classList.add("hidden");
@@ -240,7 +244,7 @@ function updateProgress(progress) {
     showProgress("Uploading video", "Sending the selected video to the local analysis service…", progress.percent, false);
     return;
   }
-  showProgress("Analyzing your video", "Extracting features and preparing experimental estimates…", null, true);
+  showProgress("Analyzing your video", "Extracting features, estimates, and edit suggestions…", null, true);
 }
 
 function showProgress(title, message, percent, indeterminate) {
@@ -262,6 +266,7 @@ function setBusy(busy) {
   elements.remove.disabled = busy;
   elements.input.disabled = busy;
   elements.caption.disabled = busy;
+  elements.topic.disabled = busy;
   elements.submit.querySelector(".button-label").textContent = busy ? "Analyzing…" : "Analyze my video";
 }
 
@@ -270,8 +275,10 @@ function validateResponse(response) {
       || !response.features || typeof response.features !== "object"
       || Array.isArray(response.features)
       || !response.estimates || typeof response.estimates !== "object"
-      || Array.isArray(response.estimates)) {
-    throw new Error("The analysis service response is missing video features or estimates.");
+      || Array.isArray(response.estimates)
+      || !Array.isArray(response.recommendations?.items)
+      || response.recommendations.items.length === 0) {
+    throw new Error("The analysis service response is missing features, estimates, or recommendations.");
   }
   const required = [
     "watched_percentage_synthetic",
@@ -290,7 +297,8 @@ function renderResult(response, fileName) {
   elements.resultFile.textContent = fileName;
   elements.requestId.textContent = response.request_id || "unavailable";
   elements.disclaimer.querySelector("p").textContent = response.disclaimer
-    || "Experimental estimates from synthetic-data models only; not validated real-world audience analytics.";
+    || "ReelRetain AI currently uses models trained on synthetic data. Its retention estimates have not been validated against real audience analytics and may differ from actual results. Use them as experimental guidance, not as guaranteed outcomes.";
+  renderRecommendations(response.recommendations);
   renderMetrics(elements.metrics, response.estimates);
   const duration = Number(response.features.video_duration_sec);
   renderMetricChart(elements.chart, elements.legend, response.estimates, Number.isFinite(duration) ? duration : 0);
@@ -326,6 +334,71 @@ function renderWarnings(warnings) {
   }
 }
 
+function renderRecommendations(recommendations) {
+  elements.recommendationContext.textContent = recommendations.context
+    || (recommendations.mode === "personalized"
+      ? "Personalized using the supplied context and available measured features."
+      : "General advice based on available measured features.");
+  elements.recommendations.replaceChildren(...recommendations.items.map((recommendation) => {
+    const card = document.createElement("article");
+    card.className = "recommendation-card";
+    const header = document.createElement("div");
+    header.className = "recommendation-card-head";
+    const title = document.createElement("h4");
+    title.textContent = recommendation.category || "Practical suggestion";
+    const priority = document.createElement("span");
+    priority.className = `recommendation-priority ${String(recommendation.priority || "Low").toLowerCase()}`;
+    priority.textContent = `${recommendation.priority || "Low"} priority`;
+    header.append(title, priority);
+    card.append(header);
+    for (const [label, value] of [
+      ["What to improve", recommendation.what],
+      ["Why it could help", recommendation.why],
+      ["Try this", recommendation.action],
+    ]) {
+      if (!value) continue;
+      const detail = document.createElement("p");
+      detail.className = "recommendation-detail";
+      const strong = document.createElement("b");
+      strong.textContent = `${label}: `;
+      detail.append(strong, document.createTextNode(value));
+      card.append(detail);
+    }
+    if (recommendation.example) {
+      const example = document.createElement("p");
+      example.className = "recommendation-example";
+      example.textContent = `Example: ${recommendation.example}`;
+      card.append(example);
+    }
+    if (recommendation.copy_text) {
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "button button-secondary copy-recommendation";
+      copy.dataset.copyText = recommendation.copy_text;
+      copy.textContent = recommendation.category === "Opening hook" ? "Copy hook" : "Copy caption";
+      copy.setAttribute("aria-label", `Copy ${recommendation.category === "Opening hook" ? "opening hook" : "suggested caption"}`);
+      card.append(copy);
+    }
+    return card;
+  }));
+}
+
+async function copyRecommendation(event) {
+  const button = event.target.closest("button[data-copy-text]");
+  if (!button) return;
+  try {
+    await navigator.clipboard.writeText(button.dataset.copyText);
+    const originalText = button.textContent;
+    button.textContent = "Copied";
+    showToast("Copied to clipboard.");
+    window.setTimeout(() => {
+      if (button.isConnected) button.textContent = originalText;
+    }, 1600);
+  } catch {
+    showToast("Clipboard access is unavailable. Select the example text and copy it manually.");
+  }
+}
+
 function downloadReport() {
   if (!latestAnalysis || !selectedFile) return;
   const report = buildReport(latestAnalysis, selectedFile.name);
@@ -346,6 +419,7 @@ function resetForAnother() {
   clearSelectedFile();
   elements.caption.value = "";
   elements.captionCount.textContent = "0 / 2200";
+  elements.topic.value = "";
   document.querySelector("#analyze").scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth" });
   elements.input.click();
 }

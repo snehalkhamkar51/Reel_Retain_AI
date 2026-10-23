@@ -8,12 +8,13 @@ export async function loadModelInfo() {
   return body;
 }
 
-export function analyzeVideo(file, caption, onProgress) {
+export function analyzeVideo(file, caption, topic, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     const form = new FormData();
     form.append("video", file, file.name);
     form.append("caption", caption);
+    form.append("topic", topic);
     request.open("POST", "/api/analyze");
     request.timeout = 180000;
     request.setRequestHeader("Accept", "application/json");

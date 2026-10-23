@@ -14,6 +14,7 @@ from reelretain.features import (
     extract_video_features,
 )
 from reelretain.predict import DISCLAIMER, ModelUnavailableError, Predictor
+from reelretain.recommendations import fallback_recommendations, generate_recommendations
 
 mimetypes.add_type("text/javascript", ".js", strict=True)
 
@@ -87,6 +88,14 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             return error_response(400, "invalid_content_type", "The uploaded content type must be a video.", request.request_id)
         if request.content_length is not None and request.content_length > app.config["MAX_CONTENT_LENGTH"]:
             return error_response(413, "upload_too_large", "The upload exceeds the configured size limit.", request.request_id)
+        caption = request.form.get("caption", "")
+        topic = request.form.get("topic", "")
+        if len(caption) > 2200 or len(topic) > 120:
+            return error_response(
+                400, "invalid_context",
+                "Caption must be 2,200 characters or fewer and topic must be 120 characters or fewer.",
+                request.request_id,
+            )
         predictor = app.extensions["predictor"]
         if not predictor.available:
             return error_response(
@@ -100,16 +109,23 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             with _temporary_upload(upload, suffix, app.config["UPLOAD_DIR"]) as saved_path:
                 temp_path = saved_path
                 features, warnings = extract_video_features(
-                    temp_path, request.form.get("caption", ""),
+                    temp_path, caption,
                     int(app.config["AUDIO_TIMEOUT_SECONDS"]),
                     int(app.config["VIDEO_TIMEOUT_SECONDS"]),
                 )
             estimates = predictor.predict(features)
+            try:
+                recommendations = generate_recommendations(features, caption, topic)
+            except Exception:
+                logging.exception("Recommendation generation failed for request %s", request.request_id)
+                recommendations = fallback_recommendations(features)
+                warnings.append("Personalized recommendations could not be prepared; general advice is shown.")
             return jsonify({
                 "ok": True,
                 "request_id": request.request_id,
                 "features": features,
                 "estimates": estimates,
+                "recommendations": recommendations,
                 "warnings": warnings,
                 "disclaimer": DISCLAIMER,
             })

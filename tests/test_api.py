@@ -61,12 +61,20 @@ def test_homepage_and_frontend_assets_are_served_by_flask(app):
     assert homepage.status_code == 200
     assert b"Know your reel" in homepage.data
     assert b"synthetic" in homepage.data.lower()
+    assert b"Audience Attraction Lab" in homepage.data
+    assert b"Experimental estimates \xe2\x80\x94 synthetic training data" in homepage.data
+    assert b"id=\"topic\"" in homepage.data
+    assert b"id=\"recommendation-list\"" in homepage.data
     assert b'type="module"' in homepage.data
     assert stylesheet.status_code == 200
     assert b"#080b12" in stylesheet.data
     assert application.status_code == 200
     assert "javascript" in application.mimetype
     assert b"analyzeVideo" in application.data
+    assert b"Copy hook" in application.data
+    assert b"Copy caption" in application.data
+    assert b"navigator.clipboard.writeText" in application.data
+    assert b"recommendations.items.map" in application.data
     assert api_module.status_code == 200
 
 
@@ -132,14 +140,75 @@ def test_successful_analysis_cleans_temporary_upload(app, monkeypatch):
         data={
             "video": (io.BytesIO(b"video-bytes"), "my clip.mp4", "video/mp4"),
             "caption": "Hello #test",
+            "topic": "urban gardening",
         },
         content_type="multipart/form-data",
     )
     assert response.status_code == 200
     assert response.json["ok"] is True
     assert set(response.json["estimates"]) == set(TARGET_COLUMNS)
+    assert response.json["recommendations"]["mode"] == "personalized"
+    assert len([item for item in response.json["recommendations"]["items"] if item["category"] == "Opening hook"]) == 3
+    assert "urban gardening" in response.json["recommendations"]["items"][0]["example"]
+    assert not any(item["category"] == "Audio" for item in response.json["recommendations"]["items"])
     assert response.json["warnings"] == ["Audio unavailable"]
     assert not seen_path["path"].exists()
+
+
+def test_successful_analysis_generates_general_recommendations_without_caption_or_audio(app, monkeypatch):
+    app.extensions["predictor"] = ReadyPredictor()
+    monkeypatch.setattr(
+        "reelretain.app.extract_video_features",
+        lambda *_args: ({"video_duration_sec": 10.0, "scene_changes": 3, "motion_intensity": 0.2,
+                         "audio_energy": None, "silence_duration_sec": None}, []),
+    )
+    response = app.test_client().post(
+        "/api/analyze",
+        data={"video": (io.BytesIO(b"video-bytes"), "my clip.mp4", "video/mp4")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    assert response.json["recommendations"]["mode"] == "general"
+    assert len(response.json["recommendations"]["items"]) >= 7
+    assert not any(item["category"] == "Audio" for item in response.json["recommendations"]["items"])
+
+
+def test_recommendation_error_is_logged_and_falls_back_without_failing_analysis(app, monkeypatch, caplog):
+    app.extensions["predictor"] = ReadyPredictor()
+    monkeypatch.setattr(
+        "reelretain.app.extract_video_features",
+        lambda *_args: ({"video_duration_sec": 10.0}, []),
+    )
+
+    def fail(*_args):
+        raise RuntimeError("recommendation engine unavailable")
+
+    monkeypatch.setattr("reelretain.app.generate_recommendations", fail)
+    response = app.test_client().post(
+        "/api/analyze",
+        data={"video": (io.BytesIO(b"video-bytes"), "my clip.mp4", "video/mp4")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    assert response.json["recommendations"]["mode"] == "general"
+    assert response.json["recommendations"]["items"]
+    assert any("recommendation generation failed" in record.message.lower() for record in caplog.records)
+    assert any("general advice is shown" in warning for warning in response.json["warnings"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("topic", "x" * 121), ("caption", "x" * 2201)],
+)
+def test_analyze_rejects_oversized_recommendation_context(app, field, value):
+    app.config["MAX_CONTENT_LENGTH"] = 4096
+    response = app.test_client().post(
+        "/api/analyze",
+        data={"video": (io.BytesIO(b"video-bytes"), "clip.mp4", "video/mp4"), field: value},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 400
+    assert response.json["error"]["code"] == "invalid_context"
 
 
 def test_analyze_returns_clear_processing_error(app, monkeypatch):

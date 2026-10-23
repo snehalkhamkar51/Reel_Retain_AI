@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#080b12">
     <meta name="description" content="Analyze a short-form video before publishing with measured features and clearly labeled experimental retention estimates.">
     <title>ReelRetain AI — Know your reel before you post</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-    <script type="module" src="{{ url_for('static', filename='js/app.js', v='4') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='5') }}">
+    <script type="module" src="{{ url_for('static', filename='js/app.js', v='5') }}"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -109,6 +109,7 @@
                   <div class="selected-video-meta"><span class="file-symbol">▶</span><div class="file-copy"><b id="file-name"></b><small id="file-details"></small></div><button class="icon-button" id="remove-video" type="button" aria-label="Remove selected video">×</button></div>
                 </div>
               </div>
+              <div class="field-group"><label for="topic">Topic or niche <span class="optional">(optional)</span></label><input id="topic" type="text" maxlength="120" placeholder="e.g. beginner home gardening"></div>
               <div class="field-group"><label for="caption">Caption <span class="optional">(optional)</span></label><textarea id="caption" rows="3" maxlength="2200" placeholder="Paste your caption to include its word and hashtag count…"></textarea><div class="field-meta"><span>Only text counts are measured; timing isn’t inferred.</span><span id="caption-count">0 / 2200</span></div></div>
               <div class="analyzer-submit"><button id="analyze-button" class="button button-primary analyze-button" type="button" disabled><span class="button-label">Analyze my video</span><span class="button-arrow" aria-hidden="true">→</span></button><span class="submit-note"><span aria-hidden="true">⌑</span> Video is removed after analysis</span></div>
               <div class="upload-error hidden" id="upload-error" role="alert" aria-live="assertive"></div>
@@ -122,14 +123,17 @@
               <div class="aside-spec"><span>01</span><div><b>Video signals</b><small>Structure, motion &amp; audio</small></div><i>↗</i></div>
               <div class="aside-spec"><span>02</span><div><b>Caption counts</b><small>Words &amp; hashtags</small></div><i>↗</i></div>
               <div class="aside-spec"><span>03</span><div><b>Experimental estimates</b><small>Trained on synthetic data</small></div><i>↗</i></div>
-              <div class="aside-disclaimer"><span>ⓘ</span><p>These estimates are experiments—not real audience analytics or validated performance predictions.</p></div>
             </aside>
           </div>
 
           <section class="results-section hidden" id="results" aria-labelledby="results-title" aria-live="polite">
             <div class="results-heading"><div><div class="eyebrow">YOUR VIDEO, IN FOCUS</div><h2 id="results-title">The signal<br><span class="text-muted">behind your story.</span></h2><p class="results-file" id="results-file"></p></div><div class="result-actions"><button class="button button-secondary" id="download-report" type="button">Download report <span>↓</span></button><button class="button button-primary" id="analyze-another" type="button">Analyze another <span>↗</span></button></div></div>
-            <div class="synthetic-banner" id="result-disclaimer"><span class="disclaimer-mark">ⓘ</span><div><b>Experimental estimates · synthetic-data model</b><p>These are not measured audience results and have not been validated against real-world retention analytics.</p></div></div>
+            <details class="model-limitations" id="result-disclaimer"><summary>Experimental estimates — synthetic training data</summary><p>ReelRetain AI currently uses models trained on synthetic data. Its retention estimates have not been validated against real audience analytics and may differ from actual results. Use them as experimental guidance, not as guaranteed outcomes.</p></details>
             <div class="metrics-grid" id="metrics-grid"></div>
+            <section class="attraction-lab" aria-labelledby="attraction-title">
+              <div class="attraction-heading"><div><div class="eyebrow">PRACTICAL NEXT STEPS</div><h3 id="attraction-title">Audience Attraction Lab</h3></div><p id="recommendation-context"></p></div>
+              <div class="recommendation-list" id="recommendation-list" aria-live="polite"></div>
+            </section>
             <div class="results-grid">
               <article class="result-card chart-card"><div class="result-card-head"><div><span class="card-index">MODEL OUTPUTS</span><h3>Estimate comparison</h3></div><span class="chart-badge">LIVE RESPONSE</span></div><p class="card-intro">Bars are scaled within each metric’s display range; units are shown separately.</p><div class="metric-chart-wrap"><canvas id="metric-chart" role="img" aria-label="Chart comparing analysis estimates"></canvas></div><ul class="chart-legend" id="chart-legend"></ul></article>
               <article class="result-card summary-card"><div class="result-card-head"><div><span class="card-index">A QUICK READ</span><h3>Retention summary</h3></div><span class="summary-spark" aria-hidden="true">✳</span></div><p class="summary-text" id="summary-text"></p><div class="summary-separator"></div><span class="card-index">FEATURE-BASED PROMPTS</span><div class="insights-list" id="insights-list"></div></article>
@@ -153,7 +157,7 @@
           <article class="step-card"><span class="step-number-large">03</span><div class="step-line"></div><h3>Explore the estimates</h3><p>Three regression pipelines return clearly labeled synthetic estimates alongside the measured features and limitations.</p></article>
           <article class="step-card"><span class="step-number-large">04</span><div class="step-line"></div><h3>Make it yours</h3><p>Use conditional, feature-based prompts to review the edit. Your judgment—and real audience evidence—still matters.</p></article>
         </div>
-        <div class="honesty-panel"><div class="honesty-symbol">!</div><div><span class="card-index">A NOTE ON THE MODEL</span><h3>Synthetic in. Experimental out.</h3><p>The models were trained and tested only on synthetic features and targets. Those patterns may differ from real videos and audiences. No real-world retention validation is available, and no estimate should be read as platform analytics or a guarantee of performance.</p></div><a href="#analyze" class="text-link">Try your draft <span>↗</span></a></div>
+        <div class="honesty-panel"><div class="honesty-symbol">!</div><div><span class="card-index">MODEL LIMITATIONS</span><h3>Experimental estimates from synthetic data.</h3><p>Not validated against real audience analytics. Use estimates as guidance, not as guaranteed outcomes.</p></div><a href="#analyze" class="text-link">Try your draft <span>↗</span></a></div>
       </section>
     </main>
 

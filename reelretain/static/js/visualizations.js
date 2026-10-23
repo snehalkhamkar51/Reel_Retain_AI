@@ -142,6 +142,7 @@ export function buildReport(result, fileName) {
     disclaimer: result.disclaimer,
     request_id: result.request_id,
     estimates: result.estimates,
+    recommendations: result.recommendations,
     extracted_features: result.features,
     warnings: result.warnings || [],
     note: "Experimental estimates from synthetic training data only; not validated real-world audience analytics.",
