@@ -1,0 +1,161 @@
+{
+  "title": "ReelRetain AI model evaluation",
+  "data_disclaimer": "Evaluation uses synthetic inputs and synthetic targets only; it does not represent validation on genuine Instagram or other audience analytics.",
+  "dataset": {
+    "filename": "reelretain_synthetic_training_dataset_5000.csv",
+    "row_count": 5000,
+    "feature_columns": [
+      "video_duration_sec",
+      "scene_changes",
+      "motion_intensity",
+      "silence_duration_sec",
+      "caption_word_count",
+      "hashtag_count",
+      "audio_energy"
+    ],
+    "target_columns": [
+      "watched_percentage_synthetic",
+      "average_watch_time_sec_synthetic",
+      "early_dropoff_rate_pct_synthetic"
+    ],
+    "excluded_columns": {
+      "hook_time_sec": "Not reliably measured by the current video extractor.",
+      "caption_sync_score": "Not measured without time-aligned captions.",
+      "face_presence": "Face detection is not implemented in the video extractor.",
+      "is_synthetic": "Synthetic-data provenance flag; constant in this dataset and not a video feature.",
+      "record_id": "Identifier; not a predictive input.",
+      "video_format": "Dataset labels content styles (for example, voiceover); the extractor does not classify them.",
+      "posting_dayofweek_utc": "Posting schedule metadata is not available from a video upload.",
+      "topic_niche": "Semantic content category is not inferred from the upload.",
+      "speech_rate_wpm": "Not extracted from uploaded videos because speech transcription is not performed.",
+      "posting_hour_utc": "Posting schedule metadata is not available from a video upload.",
+      "watched_percentage_synthetic": "Prediction target; excluded from all model inputs.",
+      "average_watch_time_sec_synthetic": "Prediction target; excluded from all model inputs.",
+      "early_dropoff_rate_pct_synthetic": "Prediction target; excluded from all model inputs."
+    },
+    "column_dtypes": {
+      "record_id": "object",
+      "video_duration_sec": "float64",
+      "scene_changes": "int64",
+      "motion_intensity": "float64",
+      "speech_rate_wpm": "float64",
+      "silence_duration_sec": "float64",
+      "caption_word_count": "int64",
+      "hashtag_count": "int64",
+      "hook_time_sec": "float64",
+      "caption_sync_score": "float64",
+      "audio_energy": "float64",
+      "face_presence": "int64",
+      "topic_niche": "object",
+      "video_format": "object",
+      "posting_hour_utc": "int64",
+      "posting_dayofweek_utc": "int64",
+      "average_watch_time_sec_synthetic": "float64",
+      "watched_percentage_synthetic": "float64",
+      "early_dropoff_rate_pct_synthetic": "float64",
+      "is_synthetic": "bool"
+    }
+  },
+  "random_seed": 42,
+  "split": {
+    "training_rows": 3500,
+    "validation_rows": 750,
+    "test_rows": 750
+  },
+  "selection_procedure": "For each target, select the candidate with the lowest validation MAE. Refit that pipeline on training plus validation rows, then report final metrics on the untouched test split.",
+  "targets": {
+    "watched_percentage_synthetic": {
+      "definition": "Synthetic percentage of a video's duration watched.",
+      "selected_model": "gradient_boosting",
+      "selection_metric": "validation_mae",
+      "validation_metrics_by_candidate": {
+        "linear_regression": {
+          "mae": 7.846584505836576,
+          "rmse": 9.797892641638125,
+          "r2": 0.120561654770581
+        },
+        "random_forest": {
+          "mae": 7.898642418354056,
+          "rmse": 9.934264041326049,
+          "r2": 0.09591046424995286
+        },
+        "gradient_boosting": {
+          "mae": 7.811065527787472,
+          "rmse": 9.763099136302525,
+          "r2": 0.12679654914032779
+        }
+      },
+      "selected_model_test_metrics": {
+        "mae": 8.171392512106495,
+        "rmse": 10.165682151336098,
+        "r2": 0.15589671351497558
+      },
+      "test_metrics_are_synthetic_data_only": true
+    },
+    "average_watch_time_sec_synthetic": {
+      "definition": "Synthetic average watch time in seconds.",
+      "selected_model": "gradient_boosting",
+      "selection_metric": "validation_mae",
+      "validation_metrics_by_candidate": {
+        "linear_regression": {
+          "mae": 2.4553114358959602,
+          "rmse": 3.3819897991952055,
+          "r2": 0.9286993165139272
+        },
+        "random_forest": {
+          "mae": 2.3610581464191362,
+          "rmse": 3.2452587369411314,
+          "r2": 0.9343480300650653
+        },
+        "gradient_boosting": {
+          "mae": 2.3127494257098986,
+          "rmse": 3.1732544401895657,
+          "r2": 0.9372290214298259
+        }
+      },
+      "selected_model_test_metrics": {
+        "mae": 2.5554303463245147,
+        "rmse": 3.5192479615599104,
+        "r2": 0.9231448258014677
+      },
+      "test_metrics_are_synthetic_data_only": true
+    },
+    "early_dropoff_rate_pct_synthetic": {
+      "definition": "Synthetic percentage of viewers dropping off early.",
+      "selected_model": "gradient_boosting",
+      "selection_metric": "validation_mae",
+      "validation_metrics_by_candidate": {
+        "linear_regression": {
+          "mae": 7.9828856810849125,
+          "rmse": 10.08034379454115,
+          "r2": 0.0889069998612444
+        },
+        "random_forest": {
+          "mae": 8.066086437815148,
+          "rmse": 10.285108092194651,
+          "r2": 0.05151658285331162
+        },
+        "gradient_boosting": {
+          "mae": 7.953087138248952,
+          "rmse": 10.09622825102358,
+          "r2": 0.08603336381071514
+        }
+      },
+      "selected_model_test_metrics": {
+        "mae": 8.279118990591765,
+        "rmse": 10.367756502018986,
+        "r2": 0.1482121184552333
+      },
+      "test_metrics_are_synthetic_data_only": true
+    }
+  },
+  "limitations": [
+    "All target values and input features are synthetic; metrics do not validate real audience behavior.",
+    "Synthetic feature distributions and semantics may differ from features extracted from real uploads.",
+    "The held-out test set is synthetic and cannot establish real-world predictive validity.",
+    "Display estimates are clipped to physical presentation ranges; clipping does not make them measured facts."
+  ],
+  "domain_mismatch": "The dataset features are synthetic and may not share distributions or semantics with measured uploads. In particular, scene_changes and motion_intensity use a sampled-frame approximation, and audio_energy uses decoded-audio RMS. Unavailable audio values at inference are imputed using training medians.",
+  "reproducible_training": "python training/train_model.py --dataset data/reelretain_synthetic_training_dataset_5000.csv --model-dir models",
+  "generated_at_utc": "2026-10-23T09:14:51.485368+00:00"
+}

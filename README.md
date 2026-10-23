@@ -34,7 +34,7 @@ Training validates the target and supported feature schema and exits with a clea
 python training\train_model.py
 ```
 
-The default dataset is `data/reelretain_synthetic_training_dataset_5000.csv`. Model files and `evaluation_report.json` are written to `models/` (model artifacts are ignored by Git). To specify other paths:
+The default dataset is `data/reelretain_synthetic_training_dataset_5000.csv`. Model files and `evaluation_report.json` are written to `models/`; the trained artifacts and report are committed so the API can run immediately after checkout. The synthetic CSV remains local and is not committed. To specify other paths:
 
 ```powershell
 python training\train_model.py --dataset C:\path\to\reelretain_synthetic_training_dataset_5000.csv --artifact-dir C:\path\to\models
@@ -114,4 +114,4 @@ Tests use small in-memory fixtures and generated media where supported; they do 
 - **Codec or corrupt video:** Install codec support required by OpenCV/FFmpeg and retry with a valid supported video.
 - **Real-world validity:** No real audience-retention labels or calibration data are supplied. Phase 2 must collect consented real video/retention pairs, define consistent feature semantics, retrain and evaluate on leakage-free real-world splits, and independently validate calibration and fairness before production use.
 
-Training artifacts and the evaluation report are generated locally under `models/` and ignored by Git; rerun training to regenerate them. Model performance and predictions remain experimental, not validated real-world retention estimates.
+Training artifacts and the evaluation report are under `models/`; rerun training with the supplied CSV to regenerate them. Model performance and predictions remain experimental, not validated real-world retention estimates.

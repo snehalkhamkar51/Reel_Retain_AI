@@ -12,6 +12,4 @@ uploads/
 *.avi
 ml/artifacts/*
 !ml/artifacts/.gitkeep
-models/*.joblib
-models/evaluation_report.json
 reelretain_synthetic_training_dataset_5000.csv
