@@ -14,7 +14,7 @@ from sklearn.pipeline import Pipeline
 
 from ml.evaluate import regression_metrics
 from ml.preprocessing import make_preprocessor
-from reelretain.features import FEATURE_COLUMNS, TARGET_COLUMNS
+from reelretain.features import EXCLUDED_DATASET_COLUMNS, FEATURE_COLUMNS, TARGET_COLUMNS
 
 
 RANDOM_SEED = 42
@@ -22,6 +22,18 @@ TARGET_DEFINITIONS = {
     "watched_percentage_synthetic": "Synthetic percentage of a video's duration watched.",
     "average_watch_time_sec_synthetic": "Synthetic average watch time in seconds.",
     "early_dropoff_rate_pct_synthetic": "Synthetic percentage of viewers dropping off early.",
+}
+EXCLUDED_COLUMN_REASONS = {
+    "record_id": "Identifier; not a predictive input.",
+    "is_synthetic": "Synthetic-data provenance flag; constant in this dataset and not a video feature.",
+    "speech_rate_wpm": "Not extracted from uploaded videos because speech transcription is not performed.",
+    "hook_time_sec": "Not reliably measured by the current video extractor.",
+    "caption_sync_score": "Not measured without time-aligned captions.",
+    "face_presence": "Face detection is not implemented in the video extractor.",
+    "topic_niche": "Semantic content category is not inferred from the upload.",
+    "video_format": "Dataset labels content styles (for example, voiceover); the extractor does not classify them.",
+    "posting_hour_utc": "Posting schedule metadata is not available from a video upload.",
+    "posting_dayofweek_utc": "Posting schedule metadata is not available from a video upload.",
 }
 LIMITATIONS = [
     "All target values and input features are synthetic; metrics do not validate real audience behavior.",
@@ -50,27 +62,21 @@ def load_dataset(path: str | Path) -> tuple[pd.DataFrame, list[str]]:
         raise ValueError(f"Dataset is missing required synthetic target columns: {missing_targets}")
     unknown = [
         column for column in frame.columns
-        if column not in FEATURE_COLUMNS and column not in TARGET_COLUMNS and column != "record_id"
+        if column not in FEATURE_COLUMNS
+        and column not in TARGET_COLUMNS
+        and column not in EXCLUDED_DATASET_COLUMNS
     ]
     if unknown:
         raise ValueError(f"Dataset contains unsupported input columns: {unknown}")
     feature_columns = [column for column in FEATURE_COLUMNS if column in frame.columns]
     if not feature_columns:
         raise ValueError(f"Dataset must contain at least one supported feature: {list(FEATURE_COLUMNS)}")
+    missing_features = [column for column in FEATURE_COLUMNS if column not in feature_columns]
+    if missing_features:
+        raise ValueError(f"Dataset is missing measurable video features: {missing_features}")
+    if "is_synthetic" in frame and not frame["is_synthetic"].eq(True).all():
+        raise ValueError("The dataset is expected to contain only rows marked is_synthetic=True.")
     for column in feature_columns:
-        if column == "orientation":
-            allowed = {"landscape", "portrait", "square"}
-            values = frame[column].dropna().astype(str)
-            invalid = sorted(set(values) - allowed)
-            if invalid:
-                raise ValueError(
-                    f"Feature orientation has unsupported categories: {invalid}; "
-                    f"expected values from {sorted(allowed)}."
-                )
-            frame[column] = frame[column].map(
-                lambda value: str(value) if pd.notna(value) else np.nan
-            )
-            continue
         original = frame[column]
         numeric = pd.to_numeric(original, errors="coerce")
         invalid = original.notna() & numeric.isna()
@@ -82,11 +88,6 @@ def load_dataset(path: str | Path) -> tuple[pd.DataFrame, list[str]]:
         values = frame[target].to_numpy(dtype=float)
         if not np.isfinite(values).all():
             raise ValueError(f"Target {target} contains missing or non-finite values.")
-    for target in (TARGET_COLUMNS[0], TARGET_COLUMNS[2]):
-        if not frame[target].between(0, 100).all():
-            raise ValueError(f"Target {target} must be between 0 and 100.")
-    if (frame[TARGET_COLUMNS[1]] < 0).any():
-        raise ValueError(f"Target {TARGET_COLUMNS[1]} cannot contain negative values.")
     if len(frame) < 12:
         raise ValueError("At least 12 rows are required for train, validation, and test splits.")
     return frame, feature_columns
@@ -124,10 +125,16 @@ def train_models(dataset_path: str | Path, artifact_dir: str | Path) -> dict:
             "filename": Path(dataset_path).name,
             "row_count": int(len(frame)),
             "feature_columns": feature_columns,
-            "excluded_columns": [
-                *(["record_id"] if "record_id" in frame.columns else []),
-                *TARGET_COLUMNS,
-            ],
+            "target_columns": list(TARGET_COLUMNS),
+            "excluded_columns": {
+                **{
+                    column: EXCLUDED_COLUMN_REASONS[column]
+                    for column in EXCLUDED_DATASET_COLUMNS
+                    if column in frame.columns
+                },
+                **{target: "Prediction target; excluded from all model inputs." for target in TARGET_COLUMNS},
+            },
+            "column_dtypes": {column: str(dtype) for column, dtype in frame.dtypes.items()},
         },
         "random_seed": RANDOM_SEED,
         "split": {"training_rows": len(train_idx), "validation_rows": len(validation_idx), "test_rows": len(test_idx)},
@@ -138,9 +145,15 @@ def train_models(dataset_path: str | Path, artifact_dir: str | Path) -> dict:
         ),
         "targets": {},
         "limitations": LIMITATIONS,
+        "domain_mismatch": (
+            "The dataset features are synthetic and may not share distributions or semantics "
+            "with measured uploads. In particular, scene_changes and motion_intensity use "
+            "a sampled-frame approximation, and audio_energy uses decoded-audio RMS. "
+            "Unavailable audio values at inference are imputed using training medians."
+        ),
         "reproducible_training": (
-            "python -m ml.train_model --dataset <authentic-csv-path> "
-            "--artifact-dir <artifact-directory>"
+            "python training/train_model.py --dataset data/reelretain_synthetic_training_dataset_5000.csv "
+                "--model-dir models"
         ),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
@@ -196,8 +209,8 @@ def train_models(dataset_path: str | Path, artifact_dir: str | Path) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Train ReelRetain AI synthetic-data models.")
-    parser.add_argument("--dataset", required=True, help="Path to the authentic synthetic training CSV.")
-    parser.add_argument("--artifact-dir", default="ml/artifacts", help="Where model files and report are saved.")
+    parser.add_argument("--dataset", default="data/reelretain_synthetic_training_dataset_5000.csv", help="Path to the synthetic training CSV.")
+    parser.add_argument("--artifact-dir", default="models", help="Where model files and report are saved.")
     args = parser.parse_args(argv)
     try:
         report = train_models(args.dataset, args.artifact_dir)

@@ -10,19 +10,12 @@ import numpy as np
 
 FEATURE_COLUMNS = (
     "video_duration_sec",
-    "frame_rate_fps",
-    "width_px",
-    "height_px",
-    "scene_change_count",
+    "scene_changes",
     "motion_intensity",
-    "audio_energy_rms",
     "silence_duration_sec",
-    "speech_rate_wpm",
     "caption_word_count",
     "hashtag_count",
-    "hook_timing_sec",
-    "caption_sync_score",
-    "orientation",
+    "audio_energy",
 )
 
 TARGET_COLUMNS = (
@@ -30,6 +23,19 @@ TARGET_COLUMNS = (
     "average_watch_time_sec_synthetic",
     "early_dropoff_rate_pct_synthetic",
 )
+
+EXCLUDED_DATASET_COLUMNS = {
+    "record_id",
+    "is_synthetic",
+    "speech_rate_wpm",
+    "hook_time_sec",
+    "caption_sync_score",
+    "face_presence",
+    "topic_niche",
+    "video_format",
+    "posting_hour_utc",
+    "posting_dayofweek_utc",
+}
 
 SUPPORTED_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm", ".avi"}
 
@@ -135,25 +141,15 @@ def extract_video_features(
         "frame_rate_fps": fps,
         "width_px": width,
         "height_px": height,
-        "scene_change_count": int(scene_changes),
+        "scene_changes": int(scene_changes),
         "motion_intensity": motion,
-        "audio_energy_rms": audio_energy,
+        "audio_energy": audio_energy,
         "silence_duration_sec": silence_duration,
-        "speech_rate_wpm": None,
         "caption_word_count": len(words),
         "hashtag_count": sum(token.startswith("#") and len(token) > 1 for token in words),
-        "hook_timing_sec": None,
-        "caption_sync_score": None,
-        "orientation": "landscape" if width > height else "portrait" if height > width else "square",
     }
-    unavailable = [
-        key for key, value in features.items()
-        if value is None and key in {"audio_energy_rms", "silence_duration_sec", "speech_rate_wpm", "hook_timing_sec", "caption_sync_score"}
-    ]
-    if "speech_rate_wpm" in unavailable:
-        warnings.append("Speech rate unavailable: no speech recognition or transcription is performed.")
-    if "hook_timing_sec" in unavailable:
-        warnings.append("Hook timing unavailable: it is not inferred from visual content.")
-    if "caption_sync_score" in unavailable:
-        warnings.append("Caption synchronization unavailable: no time-aligned captions were provided.")
+    if audio_energy is None:
+        warnings.append("Audio energy unavailable; the trained pipeline will impute its training median.")
+    if silence_duration is None:
+        warnings.append("Silence duration unavailable; the trained pipeline will impute its training median.")
     return features, warnings

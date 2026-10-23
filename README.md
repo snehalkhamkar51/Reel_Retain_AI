@@ -7,7 +7,7 @@ ReelRetain AI is a local prototype for extracting measurable features from short
 ## Architecture
 
 - `reelretain/features.py` extracts video metadata, sampled-frame scene changes and motion, optional FFmpeg audio energy/silence, and caption counts. Speech rate, hook timing, and caption synchronization are left unavailable unless a reliable measurement is implemented.
-- `ml/` validates the dataset, fits a separate scikit-learn pipeline for each synthetic target, compares Linear Regression, Random Forest, and Gradient Boosting, and saves selected pipelines and a report.
+- `training/train_model.py` trains from the supplied local dataset path; `ml/` validates the CSV, fits a separate scikit-learn pipeline for each synthetic target, compares Linear Regression, Random Forest, and Gradient Boosting, and saves selected pipelines and a report.
 - `reelretain/predict.py` loads trained artifacts and returns constrained experimental estimates.
 - `reelretain/app.py` provides the Flask health, model-info, and video-analysis endpoints.
 
@@ -17,7 +17,7 @@ The pipeline uses only recognized feature columns; target columns and `record_id
 
 - Python 3.10 or newer
 - FFmpeg on `PATH` for audio-energy and silence extraction (video analysis still runs without it and reports audio features as unavailable)
-- The original `reelretain_synthetic_training_dataset_5000.csv`, obtained from its owner/source. It is not included here; do not replace it with fabricated data.
+- The supplied `data/reelretain_synthetic_training_dataset_5000.csv` synthetic dataset.
 
 ```powershell
 python -m venv .venv
@@ -26,21 +26,21 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Put the authentic dataset in the project root, or provide its path to the training command. Training validates the target and supported feature schema and exits with a clear error if the dataset is missing or incompatible.
+Training validates the target and supported feature schema and exits with a clear error if the dataset is missing or incompatible.
 
 ## Train and evaluate
 
 ```powershell
-python -m ml.train_model --dataset .\reelretain_synthetic_training_dataset_5000.csv
+python training\train_model.py
 ```
 
-Outputs are written to `ml/artifacts/` (ignored by Git). For another location:
+The default dataset is `data/reelretain_synthetic_training_dataset_5000.csv`. Model files and `evaluation_report.json` are written to `models/` (model artifacts are ignored by Git). To specify other paths:
 
 ```powershell
-python -m ml.train_model --dataset C:\path\to\reelretain_synthetic_training_dataset_5000.csv --artifact-dir C:\path\to\artifacts
+python training\train_model.py --dataset C:\path\to\reelretain_synthetic_training_dataset_5000.csv --artifact-dir C:\path\to\models
 ```
 
-Each target's report lists validation MAE/RMSE/R² for all candidate models and held-out test MAE/RMSE/R² for the model selected by validation MAE. Metrics describe synthetic data only. Use artifacts only from a trusted source: joblib/pickle files can execute code when loaded.
+Each target's report lists validation MAE/RMSE/R² for all candidate models and held-out test MAE/RMSE/R² for the model selected by validation MAE. The default deterministic split assigns 70% to training, 15% to validation, and 15% to the untouched test set. Metrics describe synthetic data only. Synthetic labels may exceed physical display ranges (the supplied watched-percentage column includes values over 100); raw model predictions and training metrics are not rewritten, while API display estimates are constrained and marked as such. Use artifacts only from a trusted source: joblib/pickle files can execute code when loaded.
 
 ## Run the app
 
@@ -55,7 +55,7 @@ The server listens on `http://127.0.0.1:5000` by default. Environment configurat
 | `REELRETAIN_HOST` | `127.0.0.1` | Bind address |
 | `REELRETAIN_PORT` | `5000` | Port |
 | `REELRETAIN_MAX_CONTENT_LENGTH` | `104857600` | Maximum upload/request bytes |
-| `REELRETAIN_ARTIFACT_DIR` | `ml/artifacts` | Trained model directory |
+| `REELRETAIN_ARTIFACT_DIR` | `models` | Trained model directory |
 | `REELRETAIN_UPLOAD_DIR` | `uploads` | Temporary upload directory (files are removed after processing) |
 | `REELRETAIN_AUDIO_TIMEOUT_SECONDS` | `15` | FFmpeg audio extraction timeout |
 | `REELRETAIN_VIDEO_TIMEOUT_SECONDS` | `30` | OpenCV video decoding timeout |
@@ -92,9 +92,9 @@ Required target columns:
 - `average_watch_time_sec_synthetic`
 - `early_dropoff_rate_pct_synthetic`
 
-Optional identifier: `record_id` (always excluded). Supported input columns are defined in `reelretain/features.py`, including duration, frame rate, resolution, scene changes, motion, audio energy, silence duration, speech rate, caption counts, hook timing, caption synchronization, and orientation. Unknown input columns are rejected rather than silently passed to the model. Ensure the authentic dataset uses these names and compatible semantics before training.
+Optional identifier: `record_id` (always excluded). The supplied 5,000-row CSV has 20 columns: `record_id`, duration, scene changes, motion, speech rate, silence duration, caption/hashtag counts, hook time, caption synchronization, audio energy, face presence, niche, video format, posting hour/day, the three synthetic targets, and `is_synthetic`. Actual pandas dtypes and selected training features are recorded in `models/evaluation_report.json`. The model inputs use the seven dataset columns that the current extractor measures: `video_duration_sec`, `scene_changes`, `motion_intensity`, `silence_duration_sec`, `caption_word_count`, `hashtag_count`, and `audio_energy`. Target columns, `record_id`, and `is_synthetic` are never model inputs. Other source columns are explicitly excluded because they are metadata or are not measured by the current extractor. Unknown columns are rejected rather than silently passed to a model.
 
-Unavailable features are represented as missing and surfaced in warnings; the trained pipeline's imputer handles missing values. Audio analysis requires FFmpeg. Speech rate is not guessed without transcription, and hook timing/caption synchronization are not inferred. This feature contract does not eliminate the synthetic-to-real domain mismatch.
+Unavailable audio values are represented as missing, surfaced in warnings, and median-imputed by the fitted training pipeline. Audio analysis requires FFmpeg. Speech rate is not guessed without transcription, and face presence, hook timing, topic niche, video style, posting time, and caption synchronization are not inferred. The selected dataset's synthetic distributions and feature semantics may not match real extraction. This feature contract does not eliminate the synthetic-to-real domain mismatch.
 
 Video frames are resized to 64×64 grayscale and sampled at approximately one frame per second. A sampled normalized mean absolute grayscale difference of at least `0.30` counts as a scene-change candidate; motion intensity is the mean of those normalized differences. FFmpeg converts audio to mono 16 kHz float samples; energy is RMS, and silence duration is the total duration of 20 ms windows below `0.01` RMS (−40 dBFS). Audio and video decoding have configurable timeouts.
 
@@ -108,10 +108,10 @@ Tests use small in-memory fixtures and generated media where supported; they do 
 
 ## Troubleshooting and known limitations
 
-- **Dataset missing:** Obtain the authentic CSV from its owner, then rerun the training command. No model or metrics are generated from substitute data.
-- **Model unavailable:** Train all three target pipelines, or set `REELRETAIN_ARTIFACT_DIR` to a trusted directory containing them.
+- **Dataset missing:** Restore the supplied CSV at `data/reelretain_synthetic_training_dataset_5000.csv` or pass its path with `--dataset`. No replacement data is generated.
+- **Model unavailable:** Run `python training\train_model.py` to train and save all three target pipelines, or set `REELRETAIN_ARTIFACT_DIR` to a trusted directory containing them.
 - **Audio unavailable:** Install FFmpeg and add it to `PATH`; the API warns and leaves audio-derived values missing.
 - **Codec or corrupt video:** Install codec support required by OpenCV/FFmpeg and retry with a valid supported video.
 - **Real-world validity:** No real audience-retention labels or calibration data are supplied. Phase 2 must collect consented real video/retention pairs, define consistent feature semantics, retrain and evaluate on leakage-free real-world splits, and independently validate calibration and fairness before production use.
 
-This project directory was empty when initialized and has no configured Git remote; there is currently no commit or push target.
+Training artifacts and the evaluation report are generated locally under `models/` and ignored by Git; rerun training to regenerate them. Model performance and predictions remain experimental, not validated real-world retention estimates.

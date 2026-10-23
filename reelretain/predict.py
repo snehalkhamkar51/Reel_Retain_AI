@@ -87,8 +87,8 @@ class Predictor:
             } if self.available else {},
             "disclaimer": DISCLAIMER,
             "recovery": None if self.available else (
-                "Train the models with the authentic synthetic dataset using "
-                "`python -m ml.train_model --dataset <path-to-csv>`."
+                "Train the models with the supplied synthetic dataset using "
+                "`python training/train_model.py`."
             ),
         }
 

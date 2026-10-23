@@ -47,12 +47,11 @@ def test_extracts_metadata_scene_motion_and_caption(tmp_path, monkeypatch):
 
     assert features["video_duration_sec"] == 3.0
     assert features["frame_rate_fps"] == 1.0
-    assert features["scene_change_count"] == 1
+    assert features["scene_changes"] == 1
     assert features["motion_intensity"] > 0
+    assert features["audio_energy"] is None
     assert features["caption_word_count"] == 3
     assert features["hashtag_count"] == 2
-    assert features["audio_energy_rms"] is None
-    assert features["speech_rate_wpm"] is None
     assert any("FFmpeg was not found" in warning for warning in warnings)
 
 

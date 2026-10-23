@@ -20,7 +20,7 @@ def _positive_int(name: str, default: int) -> int:
 
 def get_config() -> dict:
     artifact_dir = Path(
-        os.getenv("REELRETAIN_ARTIFACT_DIR", str(PROJECT_ROOT / "ml" / "artifacts"))
+        os.getenv("REELRETAIN_ARTIFACT_DIR", str(PROJECT_ROOT / "models"))
     ).expanduser()
     upload_dir = Path(
         os.getenv("REELRETAIN_UPLOAD_DIR", str(PROJECT_ROOT / "uploads"))
