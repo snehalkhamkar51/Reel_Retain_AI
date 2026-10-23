@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.env
+uploads/
+*.mp4
+*.mov
+*.m4v
+*.webm
+*.avi
+ml/artifacts/*
+!ml/artifacts/.gitkeep
+reelretain_synthetic_training_dataset_5000.csv
